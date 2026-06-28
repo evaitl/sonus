@@ -219,17 +219,18 @@ Open [http://127.0.0.1:8080/cgi-bin/index.py](http://127.0.0.1:8080/cgi-bin/inde
 
 ### Apache
 
-Sonus mounts on a **URL path** (for example `/sonus/`) on the default Apache site.
+Sonus mounts on a **URL path** (for example `/sonus/`) on the default Apache site. See **[apache/DEPLOYMENT.md](apache/DEPLOYMENT.md)** for the full guide: prerequisites, `sonus.conf` variables, `www-data` permissions, Python/CGI setup, HTTPS, cron scans, and troubleshooting.
+
+Quick start after installing Sonus and running an initial `sonus scan`:
 
 ```bash
 sudo apt install apache2
 sudo a2enmod cgi env
-sudo systemctl reload apache2
 chmod +x web/cgi-bin/*.py
 ./scripts/setup-data-dir.sh
 ```
 
-Edit `SONUS_ROOT` in `apache/sonus.conf` to your install path, then:
+Edit `SONUS_ROOT` (and optionally `SONUS_SCAN_PATHS`, `SONUS_SESSION_SECRET`) in `apache/sonus.conf`, then:
 
 ```bash
 sudo cp apache/sonus.conf /etc/apache2/conf-available/sonus.conf
@@ -240,7 +241,7 @@ sudo systemctl reload apache2
 
 Open **http://localhost/sonus/**.
 
-The Apache user needs read access to the install tree and `/media/music`, and **write access only on `data/`** (for playlists, album art fetches, and user registration).
+Set **`SONUS_SCAN_PATHS`** in `sonus.conf` so playback works. Set **`SONUS_SESSION_SECRET`** before exposing the site on a network.
 
 ## Configuration
 

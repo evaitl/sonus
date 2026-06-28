@@ -49,6 +49,7 @@ sonus/
 tests/              ← unittest suite (CGI form parser, etc.)
 apache/
   sonus.conf        ← path-based Apache config (/sonus/)
+  DEPLOYMENT.md     ← Apache install, permissions, troubleshooting
 scripts/
   setup-data-dir.sh ← create data/, chmod CGI scripts
   scan-library.sh   ← cron-friendly scan wrapper
