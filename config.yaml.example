@@ -1,0 +1,7 @@
+# Directories to scan recursively for audio files
+scan_paths:
+  - /media/music
+
+# Runtime data (database, album art, SQLite WAL files)
+database_path: data/library.db
+art_dir: data/art

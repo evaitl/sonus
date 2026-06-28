@@ -1,0 +1,40 @@
+# Runtime data
+data/
+library.db
+library.db-journal
+library.db-wal
+library.db-shm
+art/
+scan.log
+.env
+
+# Music libraries — keep audio outside the repo (never commit)
+music/
+test_music/
+*.mp3
+*.flac
+*.ogg
+*.oga
+*.opus
+*.m4a
+*.aac
+*.wav
+*.wma
+*.m3u
+*.nfo
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Apache runtime
+apache/run/
+apache/*.pid
+apache/*.log
+
+# Local tools
+.tools/
