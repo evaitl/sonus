@@ -8,7 +8,7 @@ Supported formats: **MP3**, **FLAC**, **OGG**, **Opus**, **M4A**, **AAC**, **WAV
 
 ## Requirements
 
-- **Python 3.11+**
+- **Python 3.11+** (including 3.13; CGI scripts do not use the removed stdlib `cgi` module)
 - **pip** and **venv** (on Debian/Ubuntu: `python3-venv` and `python3-pip`)
 - **[FFmpeg](https://ffmpeg.org/)** — required when your library contains WMA files (transcoded to MP3 on scan)
 
@@ -82,20 +82,20 @@ Create the directory if needed: `sudo mkdir -p /media/music`
 
 ```bash
 source .venv/bin/activate
-python scan_music.py
+sonus scan
 ```
 
-Or use the installed CLI:
+Or use the standalone entry point (defaults to `scan` when run with no arguments):
 
 ```bash
-sonus scan
+python scan_music.py
 ```
 
 Scan specific paths instead of the default:
 
 ```bash
-python scan_music.py ~/Music
 sonus scan --path ~/Music --path /media/music
+python scan_music.py scan --path ~/Music
 ```
 
 The scanner:
@@ -103,12 +103,14 @@ The scanner:
 - Walks each path recursively for supported audio files
 - Transcodes **WMA** to MP3 alongside the source file when no matching `.mp3` exists (original `.wma` is kept on disk; existing MP3s are reused)
 - Fills missing **artist** tags from common filename patterns when embedded metadata is absent
-- Computes SHA-1 to skip duplicate files
+- Skips unchanged files using **file size and modification time** before re-hashing (fast rescans on large libraries)
+- Computes SHA-1 to skip duplicate files and detect content changes
 - Reads metadata with [Mutagen](https://mutagen.readthedocs.io/)
 - Saves embedded album art to `data/art/`
 - Upserts records into `data/library.db`
+- **Marks missing files** — after indexing, any track under the scanned paths whose audio file no longer exists is hidden from the library (`is_missing = 1`). If the file returns on a later scan, it is re-indexed automatically.
 
-Large libraries can take a while. Each track is committed as it is processed, so the web UI updates while a scan is running.
+Large libraries can take a while on the first scan. Each track is committed as it is processed, so the web UI updates while a scan is running.
 
 ### Fetch album art online
 
@@ -137,7 +139,7 @@ To rebuild from scratch:
 ```bash
 rm -rf data/
 ./scripts/setup-data-dir.sh
-python scan_music.py
+sonus scan
 ```
 
 ### Scheduled scans (cron)
@@ -152,6 +154,8 @@ Add (replace `/path/to/sonus` with your clone location):
 ```cron
 0 4 * * * /path/to/sonus/scripts/scan-library.sh
 ```
+
+Nightly scans pick up new files, skip unchanged ones quickly, and mark deleted files as missing.
 
 ## User accounts
 
@@ -177,7 +181,8 @@ Sonus serves the library through a Python CGI frontend in `web/`.
 
 ### Web UI features
 
-- **Search** by title, artist, album, and genre — each word in a field must match (case-insensitive)
+- **Search** by title, artist, and album using SQLite FTS5 (each word in a field must match)
+- **Genre filter** — exact match from a dropdown of indexed genres
 - **Pagination** with configurable page size (25, 50, 100, or 200)
 - **Sort** by title, artist, album, year, duration, size, last scanned, or random
 - **Play** tracks in the browser with a persistent bottom player bar
@@ -202,9 +207,11 @@ Audio is streamed only from files under configured scan paths (default: `/media/
 
 ```bash
 cd web
+chmod +x cgi-bin/*.py
 SONUS_CGI_PREFIX=/cgi-bin/ \
 SONUS_STATIC_URL=/static/style.css \
 SONUS_DATABASE_PATH="$(pwd)/../data/library.db" \
+SONUS_SCAN_PATHS="$(pwd)/../test_music" \
 python3 -m http.server --cgi 8080 --bind 127.0.0.1
 ```
 
@@ -249,12 +256,18 @@ Environment variables (prefix `SONUS_`) override config values, for example `SON
 
 ## How it works
 
-1. **Scanner** (`python scan_music.py` or `sonus scan`) indexes audio files and writes metadata to SQLite. WMA is converted to MP3 for browser playback; only MP3 rows are stored.
-2. **Web UI** (`web/cgi-bin/`) reads the database, streams audio, and manages per-user playlists.
+1. **Scanner** (`sonus scan`) indexes audio files and writes metadata to SQLite. WMA is converted to MP3 for browser playback; only MP3 rows are stored. Rescans skip unchanged files by size/mtime; deleted files are marked missing.
+2. **Web UI** (`web/cgi-bin/`) reads the database, streams audio, and manages per-user playlists. Search uses FTS5 over title, artist, album, and related fields.
 3. **Album art** can be fetched online with `sonus fetch-album-art` or from the track detail page.
 4. **Artist backfill** with `sonus fix-artists` parses filenames when tags are empty.
 
 Scanning and serving are separate processes, so you can re-index on a schedule without restarting the web server.
+
+### Tests
+
+```bash
+python -m unittest discover -s tests -v
+```
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for implementation history.
 

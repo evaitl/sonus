@@ -10,7 +10,12 @@ from sqlalchemy.orm import Session
 
 from sonus.audio_meta import AudioMetaError, extract_art, read_metadata
 from sonus.config import PROJECT_ROOT, resolve_art_dir, resolve_scan_path
-from sonus.database import find_track_by_content_hash, remove_wma_tracks, upsert_track
+from sonus.database import (
+    find_track_by_content_hash,
+    mark_missing_tracks,
+    remove_wma_tracks,
+    upsert_track,
+)
 from sonus.file_hash import sha1_file
 from sonus.filename_meta import coalesce_artist
 from sonus.models import Track
@@ -45,6 +50,7 @@ class ScanStats:
     unchanged: int = 0
     transcoded: int = 0
     removed_wma: int = 0
+    marked_missing: int = 0
     errors: list[str] | None = None
 
     def __post_init__(self) -> None:
@@ -114,6 +120,15 @@ def scan_paths_need_wma_transcode(paths: list[Path]) -> bool:
     return False
 
 
+def _unchanged_by_stat(existing: Track, *, file_size: int, file_mtime: float) -> bool:
+    return (
+        not existing.is_missing
+        and bool(existing.content_hash)
+        and existing.file_size == file_size
+        and existing.file_mtime == file_mtime
+    )
+
+
 def _skip_reason_before_meta(
     session: Session,
     *,
@@ -176,6 +191,21 @@ def scan_paths(
         try:
             stat = file_path.stat()
             file_path_str = str(file_path)
+
+            existing = session.scalar(
+                select(Track).where(Track.file_path == file_path_str)
+            )
+            if existing is not None and _unchanged_by_stat(
+                existing,
+                file_size=stat.st_size,
+                file_mtime=stat.st_mtime,
+            ):
+                stats.unchanged += 1
+                if on_progress:
+                    on_progress(index, total, file_path, "unchanged")
+                elif verbose:
+                    print(f"unchanged: {file_path.name}", flush=True)
+                continue
 
             content_hash = sha1_file(file_path)
             skip_reason = _skip_reason_before_meta(
@@ -256,5 +286,12 @@ def scan_paths(
             stats.errors.append(f"{file_path}: {exc}")
             if on_progress:
                 on_progress(index, total, file_path, "error")
+
+    resolved_roots = [resolve_scan_path(path) for path in paths]
+    stats.marked_missing = mark_missing_tracks(session, resolved_roots)
+    if stats.marked_missing and on_progress:
+        print(f"Marked {stats.marked_missing:,} missing file(s).", flush=True)
+    elif stats.marked_missing and verbose:
+        print(f"marked missing: {stats.marked_missing}", flush=True)
 
     return stats

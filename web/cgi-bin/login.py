@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import cgi
 import os
 import sys
 import traceback
@@ -15,6 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from sonus.auth import session_cookie_header
+from sonus.cgi.form import read_cgi_form
 from sonus.cgi.common import authenticate_user, connect, create_session_for_user
 from sonus.cgi.render import render_error, render_login
 
@@ -33,7 +33,7 @@ def _valid_next_url(next_url: str) -> str:
 
 
 def main() -> None:
-    form = cgi.FieldStorage()
+    form = read_cgi_form()
     next_url = _valid_next_url(unquote(form.getfirst("next") or ""))
 
     if os.environ.get("REQUEST_METHOD", "GET").upper() != "POST":

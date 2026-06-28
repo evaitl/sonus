@@ -284,13 +284,13 @@ def row_to_track(row: sqlite3.Row) -> TrackRow:
 
 
 SORT_COLUMNS = {
-    "title": "COALESCE(NULLIF(sort_title, ''), NULLIF(title, ''), file_name) COLLATE NOCASE",
-    "artist": "artist COLLATE NOCASE",
-    "album": "album COLLATE NOCASE",
-    "year": "year",
-    "duration": "duration_seconds",
-    "size": "file_size",
-    "scanned": "last_scanned_at",
+    "title": "COALESCE(NULLIF(tracks.sort_title, ''), NULLIF(tracks.title, ''), tracks.file_name) COLLATE NOCASE",
+    "artist": "tracks.artist COLLATE NOCASE",
+    "album": "tracks.album COLLATE NOCASE",
+    "year": "tracks.year",
+    "duration": "tracks.duration_seconds",
+    "size": "tracks.file_size",
+    "scanned": "tracks.last_scanned_at",
 }
 
 DEFAULT_SORT_DIR = {
@@ -328,11 +328,19 @@ def sort_order_by(sort: str, sort_dir: str) -> str:
         return "RANDOM()"
     direction = normalize_sort_dir(sort, sort_dir).upper()
     if sort == "year":
-        return f"year IS NULL, year {direction}"
+        return f"tracks.year IS NULL, tracks.year {direction}"
     if sort == "duration":
-        return f"duration_seconds IS NULL, duration_seconds {direction}"
+        return f"tracks.duration_seconds IS NULL, tracks.duration_seconds {direction}"
     column = SORT_COLUMNS.get(sort, SORT_COLUMNS["title"])
     return f"{column} {direction}"
+
+
+@dataclass(frozen=True)
+class TrackFilter:
+    from_sql: str
+    where_sql: str
+    params: list[object]
+    order_by: str
 
 
 @dataclass(frozen=True)
@@ -373,22 +381,37 @@ def _search_words(text: str) -> list[str]:
     return [word for word in text.split() if word]
 
 
-def _append_word_match(
-    where: list[str],
-    params: list[object],
+def _fts_quote(term: str) -> str:
+    return '"' + term.replace('"', '""') + '"'
+
+
+def _fts_column_match(columns: str, word: str) -> str:
+    return f"{{{columns}}} : {_fts_quote(word)}"
+
+
+def _build_fts_match(
     *,
-    words: list[str],
-    columns: list[str],
-) -> None:
-    for word in words:
-        pattern = f"%{word}%"
-        if len(columns) == 1:
-            where.append(f"{columns[0]} LIKE ? COLLATE NOCASE")
-            params.append(pattern)
-        else:
-            or_clauses = " OR ".join(f"{col} LIKE ? COLLATE NOCASE" for col in columns)
-            where.append(f"({or_clauses})")
-            params.extend([pattern] * len(columns))
+    title: str = "",
+    artist: str = "",
+    album: str = "",
+) -> str | None:
+    clauses: list[str] = []
+    for word in _search_words(title):
+        clauses.append(
+            f"({_fts_column_match('title', word)} OR "
+            f"{_fts_column_match('sort_title', word)} OR "
+            f"{_fts_column_match('file_name', word)})"
+        )
+    for word in _search_words(artist):
+        clauses.append(
+            f"({_fts_column_match('artist', word)} OR "
+            f"{_fts_column_match('album_artist', word)})"
+        )
+    for word in _search_words(album):
+        clauses.append(_fts_column_match("album", word))
+    if not clauses:
+        return None
+    return " AND ".join(clauses)
 
 
 def has_search_filters(
@@ -401,7 +424,7 @@ def has_search_filters(
     return bool(title.strip() or artist.strip() or album.strip() or genre)
 
 
-def _track_filter_clause(
+def _track_filter(
     *,
     title: str,
     artist: str,
@@ -409,40 +432,30 @@ def _track_filter_clause(
     genre: str,
     sort: str,
     sort_dir: str = "asc",
-) -> tuple[list[str], list[object], str]:
+) -> TrackFilter:
     order_by = sort_order_by(sort, sort_dir)
     params: list[object] = []
-    where: list[str] = ["is_missing = 0"]
+    where: list[str] = ["tracks.is_missing = 0"]
+    from_sql = "FROM tracks"
 
-    if title.strip():
-        _append_word_match(
-            where,
-            params,
-            words=_search_words(title),
-            columns=["title", "sort_title", "file_name"],
+    fts_match = _build_fts_match(title=title, artist=artist, album=album)
+    if fts_match:
+        from_sql = (
+            "FROM tracks INNER JOIN tracks_fts ON tracks_fts.rowid = tracks.id"
         )
-
-    if artist.strip():
-        _append_word_match(
-            where,
-            params,
-            words=_search_words(artist),
-            columns=["artist", "album_artist"],
-        )
-
-    if album.strip():
-        _append_word_match(
-            where,
-            params,
-            words=_search_words(album),
-            columns=["album"],
-        )
+        where.append("tracks_fts MATCH ?")
+        params.append(fts_match)
 
     if genre:
-        where.append("genre = ?")
+        where.append("tracks.genre = ?")
         params.append(genre)
 
-    return where, params, order_by
+    return TrackFilter(
+        from_sql=from_sql,
+        where_sql=" AND ".join(where),
+        params=params,
+        order_by=order_by,
+    )
 
 
 def list_tracks(
@@ -464,7 +477,7 @@ def list_tracks(
     )
     options = load_filter_options(conn)
 
-    where, params, order_by = _track_filter_clause(
+    query = _track_filter(
         title=title,
         artist=artist,
         album=album,
@@ -472,10 +485,12 @@ def list_tracks(
         sort=sort,
         sort_dir=sort_dir,
     )
-    where_sql = " AND ".join(where)
 
     filtered_count = int(
-        conn.execute(f"SELECT COUNT(*) FROM tracks WHERE {where_sql}", params).fetchone()[0]
+        conn.execute(
+            f"SELECT COUNT(*) {query.from_sql} WHERE {query.where_sql}",
+            query.params,
+        ).fetchone()[0]
     )
 
     page = max(1, page)
@@ -486,13 +501,13 @@ def list_tracks(
             return [], filtered_count, library_total, page, options
         rows = conn.execute(
             f"""
-            SELECT *
-            FROM tracks
-            WHERE {where_sql}
+            SELECT tracks.*
+            {query.from_sql}
+            WHERE {query.where_sql}
             ORDER BY RANDOM()
             LIMIT ?
             """,
-            [*params, limit],
+            [*query.params, limit],
         ).fetchall()
         return [row_to_track(row) for row in rows], filtered_count, library_total, page, options
 
@@ -503,21 +518,16 @@ def list_tracks(
     offset = (page - 1) * page_size
     rows = conn.execute(
         f"""
-        SELECT *
-        FROM tracks
-        WHERE {where_sql}
-        ORDER BY {order_by}, id
+        SELECT tracks.*
+        {query.from_sql}
+        WHERE {query.where_sql}
+        ORDER BY {query.order_by}, tracks.id
         LIMIT ? OFFSET ?
         """,
-        [*params, page_size, offset],
+        [*query.params, page_size, offset],
     ).fetchall()
 
     return [row_to_track(row) for row in rows], filtered_count, library_total, page, options
-
-
-def get_track(conn: sqlite3.Connection, track_id: int) -> TrackRow | None:
-    row = conn.execute("SELECT * FROM tracks WHERE id = ?", (track_id,)).fetchone()
-    return row_to_track(row) if row else None
 
 
 def get_track(conn: sqlite3.Connection, track_id: int) -> TrackRow | None:

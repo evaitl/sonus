@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import cgi
 import sys
 from pathlib import Path
 from urllib.parse import quote
@@ -12,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from sonus.cgi.form import read_cgi_form
 from sonus.cgi.common import (
     add_track_to_playlist,
     cgi_script,
@@ -46,7 +46,7 @@ def _playlist_url(playlist_id: int, *, message: str = "") -> str:
 
 
 def main() -> None:
-    form = cgi.FieldStorage()
+    form = read_cgi_form()
     action = (form.getfirst("action", "") or "").strip().lower()
 
     try:

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import cgi
 import mimetypes
 import os
 import re
@@ -15,6 +14,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from sonus.cgi.common import allowed_track_file, connect
+from sonus.cgi.form import read_cgi_form
 
 CHUNK_SIZE = 1024 * 256
 
@@ -46,7 +46,7 @@ def _stream_file(path: Path, start: int, end: int) -> None:
 
 
 def main() -> None:
-    form = cgi.FieldStorage()
+    form = read_cgi_form()
     raw_id = form.getfirst("id")
 
     if not raw_id or not str(raw_id).isdigit():

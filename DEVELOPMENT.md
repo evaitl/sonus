@@ -31,18 +31,22 @@ data/               ← runtime data (gitignored)
   scan.log
 scan_music.py       ← standalone scan entry point
 sonus/
-  schema/           ← SQL migrations (001–003)
+  schema/           ← SQL migrations (001–004)
   models.py         ← SQLAlchemy ORM
-  database.py       ← init, migrations, WAL mode, upsert, WMA cleanup
+  database.py       ← init, migrations, WAL mode, upsert, WMA cleanup, mark missing
   audio_meta.py     ← Mutagen metadata + embedded art extraction
   transcode.py      ← FFmpeg WMA → MP3 (skip when MP3 exists)
   filename_meta.py  ← artist parsing from filenames
   fetch_art.py      ← online album art (MusicBrainz + iTunes fallback)
   file_hash.py      ← SHA-1 for duplicate detection
-  scanner.py        ← directory walk, per-track commit, dedup by hash
+  scanner.py        ← directory walk, fast rescan, per-track commit, dedup by hash
   auth.py           ← scrypt passwords, signed session cookies
   users.py          ← account registration
-  cgi/              ← shared query/render helpers for CGI
+  cgi/
+    common.py       ← DB queries, FTS search, playlists, auth helpers
+    form.py         ← CGI request parsing (stdlib only; no deprecated cgi module)
+    render.py       ← server-side HTML
+tests/              ← unittest suite (CGI form parser, etc.)
 apache/
   sonus.conf        ← path-based Apache config (/sonus/)
 scripts/
@@ -58,8 +62,8 @@ web/
 
 ### Data flow
 
-1. **Scan:** walks configured paths; transcodes WMA to MP3 when needed; SHA-1 each file; reads tags with Mutagen; fills artist from filename when tags are empty; upserts `data/library.db`; saves embedded art to `data/art/`; removes stale WMA index rows.
-2. **Browse:** CGI scripts read the database and render HTML with server-side pagination and filters.
+1. **Scan:** walks configured paths; transcodes WMA to MP3 when needed; skips unchanged files by size/mtime before SHA-1; reads tags with Mutagen; fills artist from filename when tags are empty; upserts `data/library.db`; saves embedded art to `data/art/`; removes stale WMA index rows; marks tracks missing when files disappear.
+2. **Browse:** CGI scripts read the database and render HTML with server-side pagination and filters. Text search uses **FTS5** (`tracks_fts`), not `LIKE`.
 3. **Play:** `stream.py` serves audio with HTTP Range support. Browsers play MP3/FLAC/OGG/etc.; WMA is not played in-browser (hence transcoding).
 4. **Playlists:** signed-in users create per-user playlists; tracks are shared library-wide.
 5. **Fetch album art:** MusicBrainz + Cover Art Archive, iTunes fallback; updates `art_path` only.
@@ -138,6 +142,45 @@ Files: `sonus/transcode.py`, updates to `sonus/scanner.py`.
 
 ---
 
+## Session 4 — Large-library scale (June 2026)
+
+### User request
+
+Will the site scale to ~32,000 tracks? Implement optimizations.
+
+### Fast rescan
+
+- Before SHA-1, skip files whose path already exists in the DB with the same **file size** and **mtime** and a stored content hash
+- First scan still hashes every file; nightly rescans avoid reading unchanged audio
+
+### FTS5 search
+
+- Web search moved from `LIKE '%word%'` to **FTS5** `MATCH` queries on `tracks_fts`
+- Migration **`004_scale.sql`**: `idx_tracks_content_hash`; rebuild FTS to index **`sort_title`**
+- Search matches whole words (tokens), not arbitrary substrings
+
+### Schema version 4
+
+`CURRENT_SCHEMA_VERSION = 4` in `sonus/database.py`.
+
+---
+
+## Session 5 — Python 3.13 CGI compatibility (June 2026)
+
+### Problem
+
+All CGI scripts used `import cgi` and `cgi.FieldStorage()`. The stdlib **`cgi` module was removed in Python 3.13**.
+
+### Solution
+
+- **`sonus/cgi/form.py`** — `read_cgi_form()` and `CgiForm` parse GET query strings and `application/x-www-form-urlencoded` POST bodies using `urllib.parse` only
+- All `web/cgi-bin/*.py` scripts import `read_cgi_form` instead of `cgi`
+- **`tests/test_cgi_form.py`** — unittest coverage for GET/POST parsing
+
+Apache CGI deployment is unchanged; only request parsing moved off the removed stdlib module.
+
+---
+
 ## Supported audio formats
 
 | Extension | Indexed as | Notes |
@@ -169,13 +212,24 @@ sonus user create USERNAME        # create web login
 
 ## Web UI features
 
-- Search by title, artist, album, genre (debounced, word matching)
+- Search by title, artist, album via **FTS5** (debounced; each word in a field must match)
+- Genre filter — exact match dropdown
 - Sort by title, artist, album, year, duration, size, scanned, random
 - Pagination (25 / 50 / 100 / 200 per page)
 - Play in browser with persistent bottom player
 - Per-user playlists (requires account)
 - Fetch album art online from track detail page
 - Keyboard shortcuts: `/` search, `Esc` clear, `←`/`→` pages, `?` help
+
+---
+
+## Tests
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Currently covers the CGI form parser and guards against reintroducing `import cgi` in CGI scripts.
 
 ---
 

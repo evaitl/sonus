@@ -1,13 +1,15 @@
 from pathlib import Path
+import os
 
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, or_, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from sonus.config import resolve_scan_path
 from sonus.models import Track
 
 SCHEMA_DIR = Path(__file__).resolve().parent / "schema"
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 
 def get_engine(db_path: Path) -> Engine:
@@ -90,6 +92,54 @@ def remove_wma_tracks(session: Session) -> int:
     result = session.execute(delete(Track).where(Track.format == "wma"))
     session.commit()
     return int(result.rowcount or 0)
+
+
+def _track_path_under_roots(file_path: str, roots: list[Path]) -> bool:
+    try:
+        resolved = Path(file_path).expanduser().resolve()
+    except OSError:
+        return False
+    for root in roots:
+        try:
+            resolved.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def mark_missing_tracks(session: Session, scan_roots: list[Path]) -> int:
+    """Mark indexed tracks missing when their audio file no longer exists on disk."""
+    roots = [resolve_scan_path(path) for path in scan_roots]
+    if not roots:
+        return 0
+
+    prefix_filters = []
+    for root in roots:
+        root_str = str(root).rstrip(os.sep)
+        prefix_filters.append(Track.file_path == root_str)
+        prefix_filters.append(Track.file_path.like(f"{root_str}{os.sep}%"))
+
+    tracks = session.scalars(
+        select(Track).where(Track.is_missing.is_(False), or_(*prefix_filters))
+    ).all()
+
+    marked = 0
+    for track in tracks:
+        if not _track_path_under_roots(track.file_path, roots):
+            continue
+        path = Path(track.file_path).expanduser()
+        try:
+            exists = path.is_file()
+        except OSError:
+            exists = False
+        if not exists:
+            track.is_missing = True
+            marked += 1
+
+    if marked:
+        session.commit()
+    return marked
 
 
 def upsert_track(session: Session, data: dict) -> Track:

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import cgi
 import sys
 from pathlib import Path
 
@@ -11,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from sonus.cgi.form import read_cgi_form
 from sonus.cgi.common import (
     connect,
     get_current_user,
@@ -22,7 +22,7 @@ from sonus.cgi.render import render_error, render_track
 
 
 def main() -> None:
-    form = cgi.FieldStorage()
+    form = read_cgi_form()
     raw_id = form.getfirst("id")
 
     if not raw_id or not str(raw_id).isdigit():

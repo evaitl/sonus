@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import cgi
 import sys
 from pathlib import Path
 
@@ -12,11 +11,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from sonus.cgi.common import connect, get_current_user, list_tracks
+from sonus.cgi.form import read_cgi_form
 from sonus.cgi.render import render_error, render_library
 
 
 def main() -> None:
-    form = cgi.FieldStorage()
+    form = read_cgi_form()
     title = form.getfirst("title", "") or ""
     artist = form.getfirst("artist", "") or ""
     album = form.getfirst("album", "") or ""

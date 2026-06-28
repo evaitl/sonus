@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import cgi
 import os
 import sqlite3
 import sys
@@ -14,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from sonus.cgi.form import read_cgi_form
 from sonus.cgi.common import (
     art_dir,
     connect,
@@ -39,7 +39,7 @@ def main() -> None:
         _html(render_error("POST required.", status_hint="Method not allowed"))
         return
 
-    form = cgi.FieldStorage()
+    form = read_cgi_form()
     raw_id = form.getfirst("id")
 
     if not raw_id or not str(raw_id).isdigit():
