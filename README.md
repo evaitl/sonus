@@ -101,7 +101,7 @@ python scan_music.py scan --path ~/Music
 The scanner:
 
 - Walks each path recursively for supported audio files
-- Transcodes **WMA** to MP3 alongside the source file when no matching `.mp3` exists (original `.wma` is kept on disk; existing MP3s are reused)
+- Transcodes **WMA** to MP3 when no matching `.mp3` exists (existing MP3s are reused; newly transcoded WMA files are removed)
 - Fills missing **artist** tags from common filename patterns when embedded metadata is absent
 - Skips unchanged files using **file size and modification time** before re-hashing (fast rescans on large libraries)
 - Computes SHA-1 to skip duplicate files and detect content changes

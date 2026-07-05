@@ -46,6 +46,7 @@ class NeedsTranscodeTests(unittest.TestCase):
             self.assertTrue(was_transcoded)
             self.assertEqual(mp3_path, mp3)
             self.assertTrue(mp3.is_file())
+            self.assertFalse(wma.exists())
 
 
 if __name__ == "__main__":

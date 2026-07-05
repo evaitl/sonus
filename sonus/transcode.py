@@ -70,7 +70,7 @@ def transcode_wma_to_mp3(
     *,
     ffmpeg_cmd: str | None = None,
 ) -> tuple[Path, bool]:
-    """Transcode WMA to MP3 alongside the source file. Returns (mp3_path, was_transcoded)."""
+    """Transcode WMA to MP3 alongside the source file, then remove the WMA. Returns (mp3_path, was_transcoded)."""
     wma_path = wma_path.resolve()
     if not wma_path.is_file():
         raise TranscodeError(f"WMA file not found: {wma_path}")
@@ -117,5 +117,12 @@ def transcode_wma_to_mp3(
 
     if not mp3_path.is_file():
         raise TranscodeError(f"ffmpeg did not create {mp3_path}")
+
+    try:
+        wma_path.unlink()
+    except OSError as exc:
+        raise TranscodeError(
+            f"transcoded to {mp3_path.name} but could not remove {wma_path.name}: {exc}"
+        ) from exc
 
     return mp3_path, True

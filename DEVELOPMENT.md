@@ -123,8 +123,8 @@ Add user accounts and `fetch-album-art` commands. Add Blue Oak license. Save con
 
 Browsers do not play WMA in HTML5 `<audio>`. The scanner now:
 
-- Transcodes `.wma` to a same-stem `.mp3` next to the source file via FFmpeg
-- **Skips transcoding** when a matching `.mp3` already exists and is not older than the `.wma`
+- Transcodes `.wma` to a same-stem `.mp3` next to the source file via FFmpeg, then **deletes the WMA**
+- **Skips transcoding** when a matching `.mp3` already exists and is not older than the `.wma` (orphan WMA files are left in place)
 - Indexes only the MP3; removes WMA rows from the database on each scan
 - Requires FFmpeg only when at least one WMA still needs transcoding
 
