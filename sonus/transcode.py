@@ -43,7 +43,7 @@ def find_existing_mp3_for_wma(wma_path: Path) -> Path | None:
 
 def needs_transcode(wma_path: Path, mp3_path: Path | None = None) -> bool:
     mp3 = mp3_path if mp3_path is not None else find_existing_mp3_for_wma(wma_path)
-    if mp3 is None:
+    if mp3 is None or not mp3.is_file():
         return True
     return wma_path.stat().st_mtime > mp3.stat().st_mtime
 

@@ -91,12 +91,19 @@ def collect_track_files(
                     mp3_path, was_transcoded = resolve_wma_to_mp3(
                         path, ffmpeg_cmd=ffmpeg_cmd
                     )
+                    if not mp3_path.is_file():
+                        errors.append(
+                            f"{path}: transcoded MP3 missing at {mp3_path}"
+                        )
+                        continue
                     if was_transcoded:
                         transcoded += 1
                     if mp3_path not in seen:
                         seen.add(mp3_path)
                         files.append(mp3_path)
                 except TranscodeError as exc:
+                    errors.append(f"{path}: {exc}")
+                except OSError as exc:
                     errors.append(f"{path}: {exc}")
                 continue
             if suffix in INDEX_EXTENSIONS:
