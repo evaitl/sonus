@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from sonus.cgi.common import track_ids_with_album, track_ids_with_album_missing_art
-from sonus.fetch_art import apply_cover_bytes_to_tracks
+from sonus.fetch_art import FetchArtError, apply_cover_bytes_to_tracks, save_uploaded_cover
 
 
 class TrackIdsWithAlbumTests(unittest.TestCase):
@@ -84,6 +84,34 @@ class ApplyCoverBytesTests(unittest.TestCase):
             self.assertEqual(set(paths), {10, 11})
             self.assertTrue((art_root / "10" / "cover.jpg").is_file())
             self.assertTrue((art_root / "11" / "cover.jpg").is_file())
+
+
+class SaveUploadedCoverTests(unittest.TestCase):
+    def test_validates_and_writes_cover(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            art_root = root / "art"
+            cover = (
+                b"\x89PNG\r\n\x1a\n"
+                b"\x00\x00\x00\rIHDR"
+                b"\x00\x00\x00d\x00\x00\x00d\x08\x02\x00\x00\x00"
+                + b"x" * 600
+            )
+            with mock.patch("sonus.fetch_art.PROJECT_ROOT", root):
+                result = save_uploaded_cover(
+                    cover,
+                    track_id=10,
+                    track_ids=[10, 11],
+                    art_dir=art_root,
+                )
+            self.assertEqual(result.source, "uploaded file")
+            self.assertEqual(result.updated_track_ids, [10, 11])
+            self.assertTrue((art_root / "10" / "cover.png").is_file())
+            self.assertTrue((art_root / "11" / "cover.png").is_file())
+
+    def test_rejects_invalid_image(self) -> None:
+        with self.assertRaises(FetchArtError):
+            save_uploaded_cover(b"not-an-image", track_id=1)
 
 
 class PropagateGenreTests(unittest.TestCase):

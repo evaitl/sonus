@@ -38,13 +38,14 @@ sonus/
   transcode.py      ← FFmpeg WMA → MP3 (skip when MP3 exists)
   filename_meta.py  ← artist parsing from filenames
   fetch_art.py      ← online album art (MusicBrainz + iTunes fallback)
+  identify.py       ← AcoustID track identification (Chromaprint + MusicBrainz)
   file_hash.py      ← SHA-1 for duplicate detection
   scanner.py        ← directory walk, fast rescan, per-track commit, dedup by hash
   auth.py           ← scrypt passwords, signed session cookies, admin-mode cookie
   admins.py         ← admins.txt lookup, admin mode gate
   cgi/
     common.py       ← DB queries, FTS search, playlists, auth helpers
-    form.py         ← CGI request parsing (stdlib only; no deprecated cgi module)
+    form.py         ← CGI request parsing (urlencoded + multipart; no deprecated cgi module)
     track_page.py   ← shared track detail rendering for CGI scripts
     render.py       ← server-side HTML
 tests/              ← unittest suite (CGI form parser, etc.)
@@ -55,7 +56,7 @@ scripts/
   setup-data-dir.sh ← create data/, chmod CGI scripts
   scan-library.sh   ← cron-friendly scan wrapper
 web/
-  cgi-bin/          ← index, track, stream, art, playlists, auth, fetch_art, track_edit, admin_mode
+  cgi-bin/          ← index, track, stream, art, playlists, auth, fetch_art, upload_art, identify_track, track_edit, admin_mode
   static/
     style.css
     library.js      ← debounced search, keyboard shortcuts
@@ -70,7 +71,8 @@ web/
 4. **Playlists:** signed-in users create per-user playlists; tracks are shared library-wide.
 5. **Fetch album art:** MusicBrainz + Cover Art Archive, iTunes fallback; updates `art_path` for all tracks with the same album name (web UI: admins only).
 6. **Auth:** optional accounts for playlists; browsing and playback are open.
-7. **Admin tools:** `admins.txt` + header **admin** checkbox gate fetch-art and metadata edit on track pages.
+7. **Admin tools:** `admins.txt` + header **admin** checkbox gate fetch-art, upload-art, identify, and metadata edit on track pages.
+8. **Identify:** `fpcalc` fingerprints the audio file; AcoustID returns MusicBrainz metadata; title is updated, blank artist/album/genre are filled in.
 
 ---
 
@@ -211,6 +213,30 @@ Apache CGI deployment is unchanged; only request parsing moved off the removed s
 
 ---
 
+## Session 7 — Upload art, identify tracks, playlist shuffle (July 2026)
+
+### Upload album art
+
+- Admins can upload PNG/JPEG/GIF cover art from the browser via **`upload_art.py`**
+- **`sonus/cgi/form.py`** gained multipart parsing for file uploads
+- Uploaded art is validated and applied album-wide (same as admin fetch)
+
+### Track identification (AcoustID)
+
+- **`sonus/identify.py`** — runs `fpcalc`, queries AcoustID, fetches genre from MusicBrainz when needed
+- **`identify_track.py`** CGI handler; admin-only **Identify** button on track detail pages
+- Updates **title** always; fills **artist**, **album**, **genre** only when blank
+- Requires **Chromaprint** (`fpcalc`) on the server and an **AcoustID API key**
+- API key: sign in at [acoustid.org](https://acoustid.org/), register at [acoustid.org/new-application](https://acoustid.org/new-application), set `SONUS_ACOUSTID_CLIENT` or `acoustid_client` in `config.yaml`
+
+### Other UI
+
+- Playlist detail: **Play shuffle** button
+- Track detail: prev/next navigation via library sort/filters (arrow keys and touch swipes)
+- Non-admins can **fetch album art** when the track still shows placeholder art
+
+---
+
 ## Supported audio formats
 
 | Extension | Indexed as | Notes |
@@ -249,9 +275,11 @@ sonus user create USERNAME        # create web login
 - Pagination (25 / 50 / 100 / 200 per page)
 - Play in browser with persistent bottom player
 - Per-user playlists (requires account)
-- **Administrators** — `admins.txt` + header **admin** checkbox; fetch album art and edit track metadata
-- Fetch album art applies to all tracks sharing the same album name
-- Keyboard shortcuts: `/` search, `Esc` clear, `←`/`→` pages, `?` help
+- **Administrators** — `admins.txt` + header **admin** checkbox; fetch/upload album art, identify tracks, edit metadata
+- Fetch/upload album art applies to all tracks sharing the same album name
+- **Identify** — AcoustID + Chromaprint; updates title, fills blank artist/album/genre
+- Playlist **Play shuffle**
+- Keyboard shortcuts: `/` search, `Esc` clear, `←`/`→` pages/tracks, `?` help
 
 ---
 
@@ -261,7 +289,7 @@ sonus user create USERNAME        # create web login
 python -m unittest discover -s tests -v
 ```
 
-Currently covers the CGI form parser and guards against reintroducing `import cgi` in CGI scripts.
+Covers the CGI form parser (including multipart uploads), admin UI, AcoustID metadata merge logic, playlist rendering, and guards against reintroducing `import cgi` in CGI scripts.
 
 ---
 

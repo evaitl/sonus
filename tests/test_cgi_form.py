@@ -6,7 +6,7 @@ import sys
 import unittest
 from unittest import mock
 
-from sonus.cgi.form import CgiForm, read_cgi_form
+from sonus.cgi.form import CgiForm, UploadedFile, read_cgi_form
 
 
 class CgiFormTests(unittest.TestCase):
@@ -21,6 +21,17 @@ class CgiFormTests(unittest.TestCase):
         form = CgiForm({"tag": ["a", "b"]})
         self.assertEqual(form.getlist("tag"), ["a", "b"])
         self.assertEqual(form.getlist("missing"), [])
+
+    def test_getfile(self) -> None:
+        upload = UploadedFile(
+            filename="cover.png",
+            content_type="image/png",
+            value=b"png-bytes",
+        )
+        form = CgiForm({}, {"art": [upload]})
+        self.assertEqual(form.getfile("art"), upload)
+        self.assertEqual(form.getfilelist("art"), [upload])
+        self.assertIsNone(form.getfile("missing"))
 
     def test_read_cgi_form_get(self) -> None:
         env = {
@@ -48,15 +59,31 @@ class CgiFormTests(unittest.TestCase):
         self.assertEqual(form.getfirst("password"), "secret")
         self.assertEqual(form.getfirst("next"), "index.py")
 
-    def test_read_cgi_form_rejects_multipart(self) -> None:
+    def test_read_cgi_form_post_multipart(self) -> None:
+        body = (
+            b"--abc\r\n"
+            b'Content-Disposition: form-data; name="id"\r\n\r\n'
+            b"42\r\n"
+            b"--abc\r\n"
+            b'Content-Disposition: form-data; name="art"; filename="cover.png"\r\n'
+            b"Content-Type: image/png\r\n\r\n"
+            b"\x89PNG\r\n\x1a\npayload\r\n"
+            b"--abc--\r\n"
+        )
         env = {
             "REQUEST_METHOD": "POST",
             "CONTENT_TYPE": "multipart/form-data; boundary=abc",
-            "CONTENT_LENGTH": "0",
+            "CONTENT_LENGTH": str(len(body)),
         }
         with mock.patch.dict(os.environ, env, clear=True):
-            with self.assertRaisesRegex(ValueError, "multipart"):
-                read_cgi_form()
+            with mock.patch.object(sys, "stdin", io.TextIOWrapper(io.BytesIO(body))):
+                form = read_cgi_form()
+        self.assertEqual(form.getfirst("id"), "42")
+        upload = form.getfile("art")
+        assert upload is not None
+        self.assertEqual(upload.filename, "cover.png")
+        self.assertEqual(upload.content_type, "image/png")
+        self.assertTrue(upload.value.startswith(b"\x89PNG"))
 
     def test_cgi_scripts_do_not_import_stdlib_cgi(self) -> None:
         root = os.path.join(os.path.dirname(__file__), "..", "web", "cgi-bin")

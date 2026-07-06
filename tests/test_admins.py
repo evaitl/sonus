@@ -127,10 +127,14 @@ class TrackAdminUiTests(unittest.TestCase):
             track, [], [], current_user=user, is_admin=True, can_fetch_art=True
         )
         self.assertIn("Fetch album art", html)
+        self.assertIn("Upload album art", html)
+        self.assertIn("Identify", html)
         self.assertIn("Edit metadata", html)
         self.assertIn('name="title"', html)
         self.assertIn('name="genre"', html)
         self.assertIn("track_edit.py", html)
+        self.assertIn("upload_art.py", html)
+        self.assertIn("identify_track.py", html)
 
     def test_non_admin_hides_admin_controls(self) -> None:
         track = _sample_track()
@@ -150,6 +154,8 @@ class TrackAdminUiTests(unittest.TestCase):
             can_fetch_art=True,
         )
         self.assertIn("Fetch album art", html)
+        self.assertNotIn("Upload album art", html)
+        self.assertNotIn("Identify", html)
         self.assertNotIn("Edit metadata", html)
 
     def test_non_admin_hides_fetch_when_art_exists(self) -> None:
@@ -164,6 +170,8 @@ class TrackAdminUiTests(unittest.TestCase):
             can_fetch_art=False,
         )
         self.assertNotIn("Fetch album art", html)
+        self.assertNotIn("Upload album art", html)
+        self.assertNotIn("Identify", html)
         self.assertNotIn("Edit metadata", html)
 
 

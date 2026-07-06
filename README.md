@@ -171,7 +171,7 @@ Or use **Create account** in the web UI header.
 
 ### Administrators (`admins.txt`)
 
-The **Fetch album art** button and **Edit metadata** form on track pages are shown only to signed-in users listed in **`admins.txt`** (one username per line; `#` comments allowed). Matching is case-insensitive.
+The **Fetch album art** button, **Upload album art** form, **Identify** button, and **Edit metadata** form on track pages are shown only to signed-in users listed in **`admins.txt`** (one username per line; `#` comments allowed). Matching is case-insensitive.
 
 Listed users must also enable **admin** in the header (checkbox next to Log out) during that browser session. The toggle is stored in a cookie and cleared on log out.
 
@@ -183,6 +183,57 @@ evaitl
 ```
 
 CLI `sonus fetch-album-art` is not restricted — only replacing existing art on the web UI requires admin (`fetch_art.py`, `track_edit.py`).
+
+### Track identification (AcoustID)
+
+Admins see an **Identify** button on track detail pages. It fingerprints the audio file with Chromaprint, looks it up on [AcoustID](https://acoustid.org/), and updates metadata:
+
+- **Title** is always updated when a match is found.
+- **Artist**, **album**, and **genre** are filled in only when those fields are currently blank.
+
+#### Get an AcoustID API key
+
+1. Sign in at [acoustid.org](https://acoustid.org/) (MusicBrainz, Google, or OpenID).
+2. Register your application at [acoustid.org/new-application](https://acoustid.org/new-application).
+3. Copy the **API key** shown for your app. This is the `client` key used by the web service ([AcoustID API docs](https://acoustid.org/webservice)).
+
+AcoustID is free for personal, non-commercial use. Do not commit your key to git.
+
+#### Install Chromaprint
+
+The server needs the `fpcalc` command (from Chromaprint):
+
+```bash
+# Debian/Ubuntu
+sudo apt install libchromaprint-tools
+
+# Verify
+fpcalc -version
+```
+
+#### Configure Sonus
+
+Set the API key in **one** of these places:
+
+**Option A — environment variable** (recommended for Apache):
+
+```bash
+export SONUS_ACOUSTID_CLIENT="your-api-key-here"
+```
+
+For Apache, add to `apache/sonus.conf` inside the CGI `<Directory>` block:
+
+```apache
+SetEnv SONUS_ACOUSTID_CLIENT "your-api-key-here"
+```
+
+**Option B — `config.yaml`** (handy for the dev server and CLI):
+
+```yaml
+acoustid_client: your-api-key-here
+```
+
+The CGI scripts read `SONUS_ACOUSTID_CLIENT` first, then fall back to `acoustid_client` in `config.yaml`.
 
 ### Web server write access (Apache)
 
@@ -239,7 +290,8 @@ Sonus serves the library through a Python CGI frontend in `web/`.
 - **Sort** by title, artist, album, year, duration, size, last scanned, or random
 - **Play** tracks in the browser with a persistent bottom player bar
 - **Playlists** — per-user playlists (sign in to create, add tracks, play all or shuffle)
-- **Administrators** — edit title/artist/album/genre (see `admins.txt`); enable **admin** in the header. Anyone can **fetch album art** when the track still shows placeholder art; admins can fetch or replace art anytime.
+- **Administrators** — edit title/artist/album/genre (see `admins.txt`); enable **admin** in the header. Anyone can **fetch album art** when the track still shows placeholder art; admins can fetch, replace, or upload art from the browser anytime.
+- **Identify** — admins can identify a track with AcoustID; updates title and fills blank artist/album/genre fields (see [Track identification](#track-identification-acoustid))
 - **Fetch album art** — online cover art; admins apply the same image to all tracks with matching album name; non-admins only update tracks on that album that are still missing art
 - **Accounts** — optional sign-in for playlists; browsing and playback are open
 - **Keyboard shortcuts** — press <kbd>?</kbd> for help on the library (`/` focus search, `Esc` clear, `←`/`→` change page or track, swipe left/right on touch screens)
@@ -254,6 +306,7 @@ Sonus serves the library through a Python CGI frontend in `web/`.
 | `SONUS_SCAN_PATHS` | Colon-separated list of music directories |
 | `SONUS_SESSION_SECRET` | Session cookie signing secret (recommended in production) |
 | `SONUS_ADMINS_FILE` | Path to `admins.txt` (optional; default `data/admins.txt` or `admins.txt`) |
+| `SONUS_ACOUSTID_CLIENT` | AcoustID API key for the admin **Identify** button |
 
 Audio is streamed only from files under configured scan paths (default: `/media/music`).
 
@@ -306,8 +359,9 @@ Set **`SONUS_SCAN_PATHS`** in `sonus.conf` so playback works. Set **`SONUS_SESSI
 | `scan_paths` | Directories to scan recursively (default: `/media/music`) |
 | `database_path` | SQLite database file (default: `data/library.db`) |
 | `art_dir` | Album art directory (default: `data/art`) |
+| `acoustid_client` | AcoustID API key for the admin **Identify** button |
 
-Environment variables (prefix `SONUS_`) override config values, for example `SONUS_DATABASE_PATH`.
+Environment variables (prefix `SONUS_`) override config values, for example `SONUS_DATABASE_PATH`. The exception is `acoustid_client` in `config.yaml`, which is read directly when `SONUS_ACOUSTID_CLIENT` is not set.
 
 ## How it works
 
@@ -315,7 +369,8 @@ Environment variables (prefix `SONUS_`) override config values, for example `SON
 2. **Web UI** (`web/cgi-bin/`) reads the database, streams audio, and manages per-user playlists. Search uses FTS5 over title, artist, album, and related fields.
 3. **Album art** can be fetched online with `sonus fetch-album-art` or from the track detail page when art is missing (anyone) or anytime (admins). Matching album names receive the same artwork; non-admin fetches skip tracks that already have art.
 4. **Artist backfill** with `sonus fix-artists` parses filenames when tags are empty.
-5. **Administrators** edit metadata in the web UI when listed in `admins.txt` and **admin** mode is enabled in the header.
+5. **Administrators** edit metadata, upload album art, and identify tracks in the web UI when listed in `admins.txt` and **admin** mode is enabled in the header.
+6. **Track identification** uses Chromaprint (`fpcalc`) plus the AcoustID web service; see [Track identification](#track-identification-acoustid).
 
 Scanning and serving are separate processes, so you can re-index on a schedule without restarting the web server.
 

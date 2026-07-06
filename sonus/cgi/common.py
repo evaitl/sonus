@@ -85,6 +85,14 @@ def _load_yaml_config() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def acoustid_client_key() -> str:
+    env = os.environ.get("SONUS_ACOUSTID_CLIENT")
+    if env:
+        return env.strip()
+    data = _load_yaml_config()
+    return str(data.get("acoustid_client") or "").strip()
+
+
 def database_path() -> Path:
     env = os.environ.get("SONUS_DATABASE_PATH")
     if env:
@@ -167,6 +175,14 @@ def logout_action() -> str:
 
 def fetch_art_action() -> str:
     return cgi_script("fetch_art.py")
+
+
+def upload_art_action() -> str:
+    return cgi_script("upload_art.py")
+
+
+def identify_action() -> str:
+    return cgi_script("identify_track.py")
 
 
 def track_edit_action() -> str:

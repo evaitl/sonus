@@ -5,3 +5,8 @@ scan_paths:
 # Runtime data (database, album art, SQLite WAL files)
 database_path: data/library.db
 art_dir: data/art
+
+# Optional: AcoustID API key for the admin "Identify" button on track pages.
+# Register at https://acoustid.org/new-application (sign in required).
+# You also need fpcalc installed (Debian/Ubuntu: libchromaprint-tools).
+# acoustid_client: your-api-key-here

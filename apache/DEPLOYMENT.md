@@ -59,6 +59,15 @@ On the server:
    sudo apt install ffmpeg
    ```
 
+7. **Chromaprint** (only if you want the admin **Identify** button):
+
+   ```bash
+   sudo apt install libchromaprint-tools
+   fpcalc -version
+   ```
+
+   Register an AcoustID application at [acoustid.org/new-application](https://acoustid.org/new-application) and set `SONUS_ACOUSTID_CLIENT` in the CGI `<Directory>` block (see below).
+
 ---
 
 ## Install the Apache configuration
@@ -103,6 +112,7 @@ Optional:
 | Variable | Purpose |
 |----------|---------|
 | `SONUS_ART_DIR` | Override album art directory (default: `${SONUS_ROOT}/data/art`) |
+| `SONUS_ACOUSTID_CLIENT` | AcoustID API key for the admin **Identify** button ([register here](https://acoustid.org/new-application)) |
 
 `config.yaml` is used by the **CLI** (`sonus scan`). CGI scripts read **`SONUS_*` environment variables** set in Apache, not `config.yaml`. Keep scan paths in sync: the same directories in `config.yaml` / `sonus scan` and in `SONUS_SCAN_PATHS`.
 
@@ -202,7 +212,8 @@ You should see `Content-Type: text/html` and HTML output.
 3. **Play a track** — if streaming fails, check `SONUS_SCAN_PATHS` and that `www-data` can read the audio file.
 4. **Log in** and create a test playlist.
 5. Add your username to **`admins.txt`**, sign in, check **admin** in the header, and test fetch album art / metadata edit on a track page.
-6. Run **`sonus scan`** again and confirm new files appear without restarting Apache.
+6. If using **Identify**, confirm `fpcalc` works for `www-data` and `SONUS_ACOUSTID_CLIENT` is set; open a track and click **Identify**.
+7. Run **`sonus scan`** again and confirm new files appear without restarting Apache.
 
 ---
 
@@ -261,6 +272,13 @@ Path-based config (`/sonus/`) works behind a reverse proxy as long as the browse
 - Set **`SONUS_SCAN_PATHS`** to every directory that contains indexed audio
 - Paths must match where files actually live; use absolute paths
 - `stream.py` only serves files under those directories (path allowlisting)
+
+### Identify fails (“requires fpcalc” or “requires an AcoustID client key”)
+
+- Install Chromaprint: `sudo apt install libchromaprint-tools`
+- Register an API key at [acoustid.org/new-application](https://acoustid.org/new-application)
+- Set `SONUS_ACOUSTID_CLIENT` in the CGI `<Directory>` block and reload Apache
+- Confirm `www-data` can run `fpcalc` and read the audio file under `SONUS_SCAN_PATHS`
 
 ### Styles or scripts missing
 

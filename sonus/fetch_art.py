@@ -282,6 +282,31 @@ def apply_cover_bytes_to_tracks(
     return paths
 
 
+def save_uploaded_cover(
+    cover_bytes: bytes,
+    *,
+    track_id: int,
+    track_ids: list[int] | None = None,
+    art_dir: Path | None = None,
+) -> FetchArtResult:
+    """Validate and save uploaded cover art for one or more tracks."""
+    targets = list(dict.fromkeys(track_ids if track_ids else [track_id]))
+    if track_id not in targets:
+        targets.insert(0, track_id)
+    if not _is_usable_cover(cover_bytes):
+        raise FetchArtError(
+            "Uploaded album art must be a valid PNG, JPEG, or GIF at least "
+            f"{MIN_COVER_WIDTH}x{MIN_COVER_HEIGHT}px."
+        )
+    paths = apply_cover_bytes_to_tracks(cover_bytes, targets, art_dir=art_dir)
+    return FetchArtResult(
+        art_path=paths[track_id],
+        source="uploaded file",
+        updated_track_ids=targets,
+        art_paths=paths,
+    )
+
+
 def enrich_track_art(
     *,
     track_id: int,

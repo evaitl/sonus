@@ -24,6 +24,7 @@ from sonus.cgi.common import (
     format_duration,
     format_size,
     has_search_filters,
+    identify_action,
     library_context_params,
     login_action,
     logout_action,
@@ -38,6 +39,7 @@ from sonus.cgi.common import (
     stream_href,
     track_edit_action,
     track_href,
+    upload_art_action,
 )
 
 
@@ -584,6 +586,28 @@ def render_track(
             </form>
 """
 
+    upload_art_form = ""
+    if is_admin:
+        upload_art_form = f"""            <form class="inline-form" method="post" action="{esc(upload_art_action())}" enctype="multipart/form-data">
+              <input type="hidden" name="id" value="{track.id}">
+{library_hidden}
+              <label>
+                Upload album art
+                <input type="file" name="art" accept="image/png,image/jpeg,image/gif" required>
+              </label>
+              <button type="submit">Upload album art</button>
+            </form>
+"""
+
+    identify_form = ""
+    if is_admin:
+        identify_form = f"""            <form class="inline-form" method="post" action="{esc(identify_action())}">
+              <input type="hidden" name="id" value="{track.id}">
+{library_hidden}
+              <button type="submit">Identify</button>
+            </form>
+"""
+
     metadata_edit_section = ""
     if is_admin:
         metadata_edit_section = f"""      <section class="track-detail__edit">
@@ -668,7 +692,9 @@ def render_track(
           <div class="track-detail__actions">
             {_play_button(track)}
             <a class="btn-secondary" href="{esc(stream_href(track.id))}" download>Download</a>
-{fetch_art_form}          </div>
+{fetch_art_form}
+{upload_art_form}
+{identify_form}          </div>
           <audio class="track-player" controls preload="metadata" src="{esc(stream_href(track.id))}"></audio>
         </div>
       </div>
