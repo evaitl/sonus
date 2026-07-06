@@ -9,6 +9,7 @@ from sonus.cgi.common import (
     FilterOptions,
     LibraryContext,
     adjacent_library_tracks,
+    cgi_script,
     effective_library_for_track_nav,
     library_context_from_form,
     parse_library_context,
@@ -214,9 +215,8 @@ class RenderLibraryRandomPaginationTests(unittest.TestCase):
             sort_dir="desc",
             page_size=50,
         )
-        self.assertIn('data-filter-clear', html)
-        self.assertIn('data-clear-url="', html)
-        self.assertIn(">Clear</button>", html)
+        self.assertIn(f'href="{cgi_script("index.py")}"', html)
+        self.assertIn(">Clear</a>", html)
 
 
 if __name__ == "__main__":

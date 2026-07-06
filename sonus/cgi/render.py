@@ -470,7 +470,7 @@ def render_library(
 {page_size_select}
             </select>
           </label>
-          <button type="button" class="btn-secondary" data-filter-clear>Clear</button>
+          <a class="btn-secondary" href="{esc(clear_url)}">Clear</a>
           <button type="button" class="btn-help" data-keyboard-help-open title="Keyboard shortcuts">?</button>
         </div>
       </form>
