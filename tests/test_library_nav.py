@@ -199,6 +199,25 @@ class RenderLibraryRandomPaginationTests(unittest.TestCase):
         self.assertIn('data-next-url="', html)
         self.assertIn("Page 1 of 3", html)
 
+    def test_renders_clear_filters_button(self) -> None:
+        html = render_library(
+            [],
+            filtered_count=0,
+            library_total=0,
+            page=1,
+            options=FilterOptions(genres=["Rock"], albums=[]),
+            selected_title="quee",
+            selected_artist="",
+            selected_album="",
+            selected_genre="Rock",
+            sort="artist",
+            sort_dir="desc",
+            page_size=50,
+        )
+        self.assertIn('data-filter-clear', html)
+        self.assertIn('data-clear-url="', html)
+        self.assertIn(">Clear</button>", html)
+
 
 if __name__ == "__main__":
     unittest.main()

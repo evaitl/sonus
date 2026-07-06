@@ -98,6 +98,13 @@
     });
   });
 
+  const clearButton = document.querySelector("[data-filter-clear]");
+  if (clearButton && filterForm && filterForm.dataset.clearUrl) {
+    clearButton.addEventListener("click", () => {
+      window.location.href = filterForm.dataset.clearUrl;
+    });
+  }
+
   function openHelp() {
     if (helpDialog && typeof helpDialog.showModal === "function") {
       helpDialog.showModal();

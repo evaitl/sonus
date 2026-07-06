@@ -402,7 +402,7 @@ DEFAULT_SORT_DIR = {
 }
 
 PAGE_SIZE_OPTIONS = (25, 50, 100, 200)
-DEFAULT_PAGE_SIZE = 50
+DEFAULT_PAGE_SIZE = 100
 
 
 def normalize_page_size(page_size: int | str | None) -> int:

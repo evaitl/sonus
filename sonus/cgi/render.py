@@ -470,6 +470,7 @@ def render_library(
 {page_size_select}
             </select>
           </label>
+          <button type="button" class="btn-secondary" data-filter-clear>Clear</button>
           <button type="button" class="btn-help" data-keyboard-help-open title="Keyboard shortcuts">?</button>
         </div>
       </form>
@@ -507,6 +508,7 @@ def render_library(
       <dl>
         <dt><kbd>/</kbd></dt><dd>Focus title search</dd>
         <dt><kbd>Esc</kbd></dt><dd>Clear filters</dd>
+        <dt>Clear</dt><dd>Reset search, genre, and sort to defaults</dd>
         <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous / next page (swipe left / right on touch screens)</dd>
         <dt><kbd>?</kbd></dt><dd>Show this help</dd>
       </dl>
