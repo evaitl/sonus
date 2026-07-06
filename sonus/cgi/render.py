@@ -26,6 +26,7 @@ from sonus.cgi.common import (
     has_search_filters,
     identify_action,
     library_context_params,
+    LIBRARY_CONTEXT_FORM_PREFIX,
     login_action,
     logout_action,
     normalize_page_size,
@@ -270,7 +271,7 @@ def _library_context_hidden_inputs(library: LibraryContext | None) -> str:
     if library is None:
         return ""
     return "\n".join(
-        f'          <input type="hidden" name="{esc(key)}" value="{esc(value)}">'
+        f'          <input type="hidden" name="{esc(LIBRARY_CONTEXT_FORM_PREFIX + key)}" value="{esc(value)}">'
         for key, value in library_context_params(library).items()
     )
 

@@ -194,6 +194,7 @@ def admin_mode_action() -> str:
 
 
 TRACK_METADATA_FIELDS = frozenset({"title", "artist", "album", "genre"})
+LIBRARY_CONTEXT_FORM_PREFIX = "lib_"
 
 
 @dataclass(frozen=True)
@@ -226,13 +227,21 @@ def parse_library_context(
 
 
 def library_context_from_form(form: object) -> LibraryContext:
+    getfirst = getattr(form, "getfirst")
+
+    def _value(name: str) -> str:
+        prefixed = getfirst(f"{LIBRARY_CONTEXT_FORM_PREFIX}{name}", "")
+        if prefixed:
+            return str(prefixed or "")
+        return str(getfirst(name, "") or "")
+
     return parse_library_context(
-        title=getattr(form, "getfirst")("title", "") or "",
-        artist=getattr(form, "getfirst")("artist", "") or "",
-        album=getattr(form, "getfirst")("album", "") or "",
-        genre=getattr(form, "getfirst")("genre", "") or "",
-        sort=getattr(form, "getfirst")("sort", "title") or "title",
-        sort_dir=getattr(form, "getfirst")("sort_dir", "") or "",
+        title=_value("title"),
+        artist=_value("artist"),
+        album=_value("album"),
+        genre=_value("genre"),
+        sort=_value("sort") or "title",
+        sort_dir=_value("sort_dir"),
     )
 
 

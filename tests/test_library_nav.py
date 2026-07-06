@@ -9,11 +9,13 @@ from sonus.cgi.common import (
     LibraryContext,
     adjacent_library_tracks,
     effective_library_for_track_nav,
+    library_context_from_form,
     parse_library_context,
     track_href,
     track_library_nav_urls,
 )
-from sonus.cgi.render import render_track
+from sonus.cgi.form import CgiForm
+from sonus.cgi.render import _library_context_hidden_inputs, render_track
 from sonus.cgi.common import TrackRow
 
 
@@ -129,6 +131,33 @@ class AdjacentLibraryTracksTests(unittest.TestCase):
         self.assertIn("id=1", prev_url)
         self.assertIn("id=3", next_url)
         self.assertNotIn("genre=", prev_url)
+
+
+class LibraryContextFormTests(unittest.TestCase):
+    def test_hidden_inputs_use_prefixed_names(self) -> None:
+        html = _library_context_hidden_inputs(LibraryContext(title="quee", genre="Rock"))
+        self.assertIn('name="lib_title"', html)
+        self.assertIn('value="quee"', html)
+        self.assertIn('name="lib_genre"', html)
+        self.assertNotIn('name="title"', html)
+
+    def test_library_context_from_form_reads_prefixed_post_fields(self) -> None:
+        form = CgiForm(
+            {
+                "lib_title": ["quee"],
+                "lib_genre": ["Rock"],
+                "title": ["Bonnie"],
+            }
+        )
+        library = library_context_from_form(form)
+        self.assertEqual(library.title, "quee")
+        self.assertEqual(library.genre, "Rock")
+
+    def test_library_context_from_form_reads_get_query_fields(self) -> None:
+        form = CgiForm({"title": ["quee"], "genre": ["Rock"]})
+        library = library_context_from_form(form)
+        self.assertEqual(library.title, "quee")
+        self.assertEqual(library.genre, "Rock")
 
 
 class RenderTrackNavTests(unittest.TestCase):

@@ -195,6 +195,27 @@ class ParseTrackMetadataFormTests(unittest.TestCase):
             },
         )
 
+    def test_metadata_title_wins_over_prefixed_library_context(self) -> None:
+        form = CgiForm(
+            {
+                "lib_title": ["quee"],
+                "lib_artist": ["queen"],
+                "title": ["Bonnie"],
+                "artist": ["Madonna"],
+                "album": ["Album"],
+                "genre": ["Pop"],
+            }
+        )
+        self.assertEqual(
+            parse_track_metadata_form(form),
+            {
+                "title": "Bonnie",
+                "artist": "Madonna",
+                "album": "Album",
+                "genre": "Pop",
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
