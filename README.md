@@ -169,6 +169,43 @@ sonus user create yourname
 
 Or use **Create account** in the web UI header.
 
+### Web server write access (Apache)
+
+Registration, playlists, and **Fetch album art** update `data/library.db`. Apache runs CGI as **`www-data`**, which must be able to **write** the database file and the **`data/`** directory (SQLite also creates `library.db-wal` and `library.db-shm` there).
+
+If account creation fails with a read-only or permission error, run these from your Sonus install directory (replace `/path/to/sonus` if needed):
+
+```bash
+cd /path/to/sonus
+./scripts/setup-data-dir.sh   # creates data/ and prints permission hints
+
+# Share data/ with www-data via your login group (recommended)
+sudo usermod -aG "$(id -gn)" www-data
+sudo chgrp "$(id -gn)" data data/art
+sudo chmod 2775 data data/art
+
+# If library.db already exists, give the group write on it too
+sudo chgrp "$(id -gn)" data/library.db 2>/dev/null || true
+chmod g+rw data/library.db 2>/dev/null || true
+
+# www-data must traverse the install tree (read-only is fine outside data/)
+chmod g+rX . web sonus
+
+sudo systemctl reload apache2
+```
+
+You may need to **log out and back in** (or reboot) after `usermod` so group membership applies to new processes. Then try **Create account** again.
+
+**Workaround:** create accounts from the CLI as your own user (no `www-data` write access required for this step):
+
+```bash
+sonus user create yourname
+```
+
+Playlist and art-fetch features still need the permissions above when using the web UI.
+
+See [apache/DEPLOYMENT.md](apache/DEPLOYMENT.md) for the full Apache permission and troubleshooting guide.
+
 For production, set a stable session secret:
 
 ```bash
