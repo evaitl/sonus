@@ -273,6 +273,22 @@ def _library_context_hidden_inputs(library: LibraryContext | None) -> str:
     )
 
 
+def _playlist_queue(tracks: list[TrackRow]) -> list[dict[str, str]]:
+    return [
+        {
+            "streamUrl": stream_href(t.id),
+            "title": t.title or t.file_name,
+            "artist": t.artist or t.album_artist or "",
+            "artUrl": art_href(t.id, version=art_cache_version(t)) if t.art_path else "",
+        }
+        for t in tracks
+    ]
+
+
+def _playlist_queue_json(tracks: list[TrackRow]) -> str:
+    return html.escape(json.dumps(_playlist_queue(tracks)), quote=True)
+
+
 def _play_button(track: TrackRow) -> str:
     title = track.title or track.file_name
     artist = track.artist or track.album_artist or ""
@@ -748,21 +764,17 @@ def render_playlist_detail(
     message_html = f'<p class="flash-message">{esc(message)}</p>\n' if message else ""
 
     if tracks:
-        queue = [
-            {
-                "streamUrl": stream_href(t.id),
-                "title": t.title or t.file_name,
-                "artist": t.artist or t.album_artist or "",
-                "artUrl": art_href(t.id, version=art_cache_version(t)) if t.art_path else "",
-            }
-            for t in tracks
-        ]
-        queue_json = html.escape(json.dumps(queue), quote=True)
+        queue_json = _playlist_queue_json(tracks)
         play_all_btn = (
             f'<button type="button" class="btn-play-all" data-play-queue="{queue_json}">Play all</button>'
         )
+        play_shuffle_btn = (
+            f'<button type="button" class="btn-play-all btn-play-shuffle" '
+            f'data-play-queue="{queue_json}" data-shuffle>Play shuffle</button>'
+        )
+        play_btns = f"{play_all_btn}\n          {play_shuffle_btn}"
     else:
-        play_all_btn = ""
+        play_btns = ""
 
     rows = "\n".join(
         f"""        <tr>
@@ -790,7 +802,7 @@ def render_playlist_detail(
         <p class="playlist-count">{playlist.track_count} track{"s" if playlist.track_count != 1 else ""}</p>
         {message_html}
         <div class="playlist-detail__actions">
-          {play_all_btn}
+          {play_btns}
           <form class="inline-form" method="post" action="{esc(playlist_edit_action())}">
             <input type="hidden" name="action" value="rename">
             <input type="hidden" name="playlist_id" value="{playlist.id}">

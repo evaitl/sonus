@@ -28,6 +28,15 @@
     audio.play().catch(() => {});
   }
 
+  function shuffleArray(items) {
+    const shuffled = items.slice();
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
+
   function playQueue(items, startIndex) {
     queue = items;
     queueIndex = startIndex || 0;
@@ -63,7 +72,10 @@
   document.querySelectorAll("[data-play-queue]").forEach((button) => {
     button.addEventListener("click", () => {
       try {
-        const items = JSON.parse(button.dataset.playQueue || "[]");
+        let items = JSON.parse(button.dataset.playQueue || "[]");
+        if (button.hasAttribute("data-shuffle")) {
+          items = shuffleArray(items);
+        }
         playQueue(items, 0);
       } catch (err) {
         console.error("Invalid playlist queue", err);

@@ -238,7 +238,7 @@ Sonus serves the library through a Python CGI frontend in `web/`.
 - **Pagination** with configurable page size (25, 50, 100, or 200)
 - **Sort** by title, artist, album, year, duration, size, last scanned, or random
 - **Play** tracks in the browser with a persistent bottom player bar
-- **Playlists** — per-user playlists (sign in to create, add tracks, play all)
+- **Playlists** — per-user playlists (sign in to create, add tracks, play all or shuffle)
 - **Administrators** — edit title/artist/album/genre (see `admins.txt`); enable **admin** in the header. Anyone can **fetch album art** when the track still shows placeholder art; admins can fetch or replace art anytime.
 - **Fetch album art** — online cover art; admins apply the same image to all tracks with matching album name; non-admins only update tracks on that album that are still missing art
 - **Accounts** — optional sign-in for playlists; browsing and playback are open

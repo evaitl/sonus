@@ -290,6 +290,16 @@ h1 {
   border: none;
 }
 
+.btn-play-shuffle {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-play-shuffle:hover {
+  filter: brightness(1.08);
+}
+
 .btn-secondary {
   text-decoration: none;
   display: inline-block;
