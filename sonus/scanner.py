@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -79,12 +80,22 @@ def _record_skip(
     skipped.append(SkippedEntry(path.resolve(), reason))
 
 
+def safe_console_text(value: str | Path) -> str:
+    """Make text safe to print on the current stdout encoding."""
+    text = str(value)
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    return text.encode(encoding, errors="replace").decode(encoding)
+
+
 def print_skipped_entries(entries: list[SkippedEntry]) -> None:
     if not entries:
         return
     print(f"\nSkipped ({len(entries)}):", flush=True)
     for entry in entries:
-        print(f"  {entry.reason}: {entry.path}", flush=True)
+        print(
+            f"  {entry.reason}: {safe_console_text(entry.path)}",
+            flush=True,
+        )
 
 
 def iter_track_files(root: Path):
@@ -233,7 +244,10 @@ def _skip_reason_before_meta(
 
 def print_scan_progress(current: int, total: int, path: Path, status: str) -> None:
     width = len(str(total))
-    print(f"[{current:>{width}}/{total}] {status}: {path.name}", flush=True)
+    print(
+        f"[{current:>{width}}/{total}] {status}: {safe_console_text(path.name)}",
+        flush=True,
+    )
 
 
 def scan_paths(
@@ -290,7 +304,7 @@ def scan_paths(
                 if on_progress:
                     on_progress(index, total, file_path, "unchanged")
                 elif verbose:
-                    print(f"unchanged: {file_path}", flush=True)
+                    print(f"unchanged: {safe_console_text(file_path)}", flush=True)
                 continue
 
             content_hash = sha1_file(file_path)
@@ -316,7 +330,11 @@ def scan_paths(
                 if on_progress:
                     on_progress(index, total, file_path, "duplicate")
                 elif verbose:
-                    print(f"duplicate: {file_path} ({duplicate_reason})", flush=True)
+                    print(
+                        f"duplicate: {safe_console_text(file_path)} "
+                        f"({safe_console_text(duplicate_reason)})",
+                        flush=True,
+                    )
                 continue
 
             if skip_reason == "unchanged":
@@ -327,7 +345,7 @@ def scan_paths(
                 if on_progress:
                     on_progress(index, total, file_path, "unchanged")
                 elif verbose:
-                    print(f"unchanged: {file_path}", flush=True)
+                    print(f"unchanged: {safe_console_text(file_path)}", flush=True)
                 continue
 
             meta = read_metadata(file_path)
@@ -371,7 +389,7 @@ def scan_paths(
                 on_progress(index, total, file_path, "indexed")
             elif verbose:
                 title = track.title or track.file_name
-                print(f"indexed: {title}", flush=True)
+                print(f"indexed: {safe_console_text(title)}", flush=True)
         except AudioMetaError as exc:
             session.rollback()
             stats.errors.append(f"{file_path}: {exc}")

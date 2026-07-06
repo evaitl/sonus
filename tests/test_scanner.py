@@ -1,8 +1,26 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from sonus.scanner import collect_track_files
+from sonus.scanner import (
+    collect_track_files,
+    print_scan_progress,
+    safe_console_text,
+)
+
+
+class SafeConsoleTextTests(unittest.TestCase):
+    def test_replaces_lone_surrogates(self) -> None:
+        self.assertEqual(safe_console_text("song\udcb4name.mp3"), "song?name.mp3")
+
+    def test_print_scan_progress_handles_surrogate_filename(self) -> None:
+        bad_name = "track\udcb4file.mp3"
+        with mock.patch("builtins.print") as print_mock:
+            print_scan_progress(1, 1, Path(bad_name), "error")
+        printed = print_mock.call_args.args[0]
+        self.assertNotIn("\udcb4", printed)
+        self.assertIn("error:", printed)
 
 
 class CollectTrackFilesTests(unittest.TestCase):
