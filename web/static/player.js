@@ -4,6 +4,7 @@
   const artEl = document.getElementById("player-art");
   const titleEl = document.getElementById("player-title");
   const artistEl = document.getElementById("player-artist");
+  const defaultArtUrl = artEl ? artEl.dataset.defaultSrc || "" : "";
 
   if (!audio || !playerBar) {
     return;
@@ -19,11 +20,10 @@
     artistEl.textContent = track.artist || "";
     if (track.artUrl) {
       artEl.src = track.artUrl;
-      artEl.hidden = false;
     } else {
-      artEl.removeAttribute("src");
-      artEl.hidden = true;
+      artEl.src = defaultArtUrl;
     }
+    artEl.hidden = false;
     audio.src = track.streamUrl;
     audio.play().catch(() => {});
   }

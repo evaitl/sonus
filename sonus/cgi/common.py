@@ -145,6 +145,10 @@ def static_asset(name: str) -> str:
     return f"{base}/{name}"
 
 
+def default_cover_href() -> str:
+    return static_asset("default-cover.svg")
+
+
 def cgi_script(name: str) -> str:
     prefix = os.environ.get("SONUS_CGI_PREFIX", "")
     return f"{prefix}{name}"

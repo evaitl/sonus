@@ -19,6 +19,7 @@ from sonus.cgi.common import (
     art_cache_version,
     art_href,
     cgi_script,
+    default_cover_href,
     esc,
     fetch_art_action,
     format_duration,
@@ -107,7 +108,7 @@ def page_shell(
   </main>
   <footer class="player-bar" id="player-bar" hidden>
     <div class="container player-bar__inner">
-      <img class="player-bar__art" id="player-art" alt="" width="48" height="48">
+      <img class="player-bar__art" id="player-art" alt="" width="48" height="48" data-default-src="{esc(default_cover_href())}">
       <div class="player-bar__meta">
         <div class="player-bar__title" id="player-title"></div>
         <div class="player-bar__artist" id="player-artist"></div>
@@ -211,12 +212,15 @@ def _art_img(track: TrackRow, *, css_class: str = "track-art") -> str:
     title = track.title or track.file_name
     if track.art_path:
         version = art_cache_version(track)
-        return (
-            f'<img class="{css_class}" src="{esc(art_href(track.id, version=version))}" '
-            f'alt="Art: {esc(title)}" loading="lazy">'
-        )
-    initial = esc(title[0].upper() if title else "?")
-    return f'<div class="{css_class} track-art--placeholder" aria-hidden="true">{initial}</div>'
+        src = art_href(track.id, version=version)
+        alt = f"Art: {title}"
+    else:
+        src = default_cover_href()
+        alt = "No album art"
+    return (
+        f'<img class="{css_class}" src="{esc(src)}" '
+        f'alt="{esc(alt)}" loading="lazy">'
+    )
 
 
 def _select_options(
