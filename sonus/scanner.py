@@ -42,6 +42,12 @@ SUPPORTED_EXTENSIONS = INDEX_EXTENSIONS | {WMA_EXTENSION}
 ScanProgressCallback = Callable[[int, int, Path, str], None]
 
 
+@dataclass(frozen=True)
+class SkippedEntry:
+    path: Path
+    reason: str
+
+
 @dataclass
 class ScanStats:
     scanned: int = 0
@@ -52,10 +58,33 @@ class ScanStats:
     removed_wma: int = 0
     marked_missing: int = 0
     errors: list[str] | None = None
+    skipped_entries: list[SkippedEntry] | None = None
 
     def __post_init__(self) -> None:
         if self.errors is None:
             self.errors = []
+        if self.skipped_entries is None:
+            self.skipped_entries = []
+
+
+def _record_skip(
+    skipped: list[SkippedEntry] | None,
+    path: Path,
+    reason: str,
+    *,
+    verbose: bool,
+) -> None:
+    if not verbose or skipped is None:
+        return
+    skipped.append(SkippedEntry(path.resolve(), reason))
+
+
+def print_skipped_entries(entries: list[SkippedEntry]) -> None:
+    if not entries:
+        return
+    print(f"\nSkipped ({len(entries)}):", flush=True)
+    for entry in entries:
+        print(f"  {entry.reason}: {entry.path}", flush=True)
 
 
 def iter_track_files(root: Path):
@@ -74,6 +103,8 @@ def collect_track_files(
     paths: list[Path],
     *,
     ffmpeg_cmd: str | None = None,
+    verbose: bool = False,
+    skipped: list[SkippedEntry] | None = None,
 ) -> tuple[list[Path], list[str], int]:
     files: list[Path] = []
     seen: set[Path] = set()
@@ -82,9 +113,45 @@ def collect_track_files(
     for root in paths:
         root = resolve_scan_path(root)
         if not root.exists():
-            errors.append(f"path not found: {root}")
+            message = "path not found"
+            errors.append(f"{message}: {root}")
+            _record_skip(skipped, root, message, verbose=verbose)
             continue
-        for path in iter_track_files(root):
+        if root.is_file():
+            suffix = root.suffix.lower()
+            if suffix in SUPPORTED_EXTENSIONS:
+                candidates = [root.resolve()]
+            else:
+                _record_skip(
+                    skipped,
+                    root,
+                    f"unsupported file type ({suffix or 'none'})",
+                    verbose=verbose,
+                )
+                candidates = []
+        else:
+            candidates = []
+            try:
+                for path in root.rglob("*"):
+                    if not path.is_file():
+                        continue
+                    suffix = path.suffix.lower()
+                    if suffix not in SUPPORTED_EXTENSIONS:
+                        _record_skip(
+                            skipped,
+                            path,
+                            f"unsupported file type ({suffix or 'none'})",
+                            verbose=verbose,
+                        )
+                        continue
+                    candidates.append(path.resolve())
+            except OSError as exc:
+                message = f"cannot read directory ({exc})"
+                errors.append(f"{root}: {message}")
+                _record_skip(skipped, root, message, verbose=verbose)
+                continue
+
+        for path in candidates:
             suffix = path.suffix.lower()
             if suffix == WMA_EXTENSION:
                 try:
@@ -108,6 +175,12 @@ def collect_track_files(
                 continue
             if suffix in INDEX_EXTENSIONS:
                 if path.with_suffix(WMA_EXTENSION).is_file():
+                    _record_skip(
+                        skipped,
+                        path,
+                        "companion WMA exists",
+                        verbose=verbose,
+                    )
                     continue
                 if path not in seen:
                     seen.add(path)
@@ -180,7 +253,10 @@ def scan_paths(
         find_ffmpeg(ffmpeg_cmd)
 
     track_files, path_errors, stats.transcoded = collect_track_files(
-        paths, ffmpeg_cmd=ffmpeg_cmd
+        paths,
+        ffmpeg_cmd=ffmpeg_cmd,
+        verbose=verbose,
+        skipped=stats.skipped_entries,
     )
     stats.errors.extend(path_errors)
     stats.removed_wma = remove_wma_tracks(session)
@@ -208,10 +284,13 @@ def scan_paths(
                 file_mtime=stat.st_mtime,
             ):
                 stats.unchanged += 1
+                _record_skip(
+                    stats.skipped_entries, file_path, "unchanged", verbose=verbose
+                )
                 if on_progress:
                     on_progress(index, total, file_path, "unchanged")
                 elif verbose:
-                    print(f"unchanged: {file_path.name}", flush=True)
+                    print(f"unchanged: {file_path}", flush=True)
                 continue
 
             content_hash = sha1_file(file_path)
@@ -222,23 +301,33 @@ def scan_paths(
             )
             if skip_reason == "duplicate":
                 stats.skipped += 1
+                canonical = find_track_by_content_hash(session, content_hash)
+                duplicate_reason = (
+                    f"duplicate (same as {canonical.file_path})"
+                    if canonical
+                    else "duplicate"
+                )
+                _record_skip(
+                    stats.skipped_entries,
+                    file_path,
+                    duplicate_reason,
+                    verbose=verbose,
+                )
                 if on_progress:
                     on_progress(index, total, file_path, "duplicate")
                 elif verbose:
-                    canonical = find_track_by_content_hash(session, content_hash)
-                    print(
-                        f"duplicate: {file_path.name} "
-                        f"(same as {canonical.file_path if canonical else 'unknown'})",
-                        flush=True,
-                    )
+                    print(f"duplicate: {file_path} ({duplicate_reason})", flush=True)
                 continue
 
             if skip_reason == "unchanged":
                 stats.unchanged += 1
+                _record_skip(
+                    stats.skipped_entries, file_path, "unchanged", verbose=verbose
+                )
                 if on_progress:
                     on_progress(index, total, file_path, "unchanged")
                 elif verbose:
-                    print(f"unchanged: {file_path.name}", flush=True)
+                    print(f"unchanged: {file_path}", flush=True)
                 continue
 
             meta = read_metadata(file_path)

@@ -5,7 +5,7 @@ import typer
 from sonus.config import load_settings, resolve_art_dir, resolve_database_path
 from sonus.database import get_engine, init_db
 from sonus.fetch_art import FetchArtError, enrich_track_art
-from sonus.scanner import print_scan_progress, scan_paths
+from sonus.scanner import print_scan_progress, print_skipped_entries, scan_paths
 from sonus.users import UserError, register_user
 
 app = typer.Typer(
@@ -24,6 +24,9 @@ def main() -> None:
 
 @app.command()
 def scan(
+    scan_paths_arg: list[Path] = typer.Argument(
+        None, help="Directory or file to scan (overrides config)"
+    ),
     config: Path | None = typer.Option(
         None, "--config", "-c", help="Path to config.yaml"
     ),
@@ -33,14 +36,23 @@ def scan(
     ffmpeg: str | None = typer.Option(
         None, "--ffmpeg", help="Path to ffmpeg executable (for WMA transcoding)"
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v"),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Report directories and files that are skipped"
+    ),
     quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress per-file progress"),
 ) -> None:
     """Scan directories for audio files and update the library database."""
     settings = load_settings(config)
-    scan_targets = [p.expanduser() for p in path] if path else settings.scan_paths
+    explicit_paths: list[Path] = []
+    if scan_paths_arg:
+        explicit_paths.extend(scan_paths_arg)
+    if path:
+        explicit_paths.extend(path)
+    scan_targets = [p.expanduser() for p in explicit_paths] if explicit_paths else settings.scan_paths
     if not scan_targets:
-        typer.echo("No scan paths configured. Set scan_paths in config.yaml or pass --path.")
+        typer.echo(
+            "No scan paths configured. Set scan_paths in config.yaml or pass a path."
+        )
         raise typer.Exit(code=1)
 
     engine = get_engine(resolve_database_path(settings.database_path))
@@ -69,7 +81,18 @@ def scan(
         summary += f", skipped {stats.unchanged} unchanged"
     if stats.marked_missing:
         summary += f", marked {stats.marked_missing} missing"
+    if verbose and stats.skipped_entries:
+        pre_scan_skips = sum(
+            1
+            for entry in stats.skipped_entries
+            if not entry.reason.startswith("duplicate")
+            and entry.reason != "unchanged"
+        )
+        if pre_scan_skips:
+            summary += f", skipped {pre_scan_skips} other file(s)/path(s)"
     typer.echo(f"{summary}.")
+    if verbose and stats.skipped_entries:
+        print_skipped_entries(stats.skipped_entries)
     if stats.errors:
         typer.echo(f"{len(stats.errors)} issue(s):")
         for err in stats.errors:
