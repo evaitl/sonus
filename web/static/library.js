@@ -1,5 +1,7 @@
 (function () {
   const DEBOUNCE_MS = 1000;
+  const SWIPE_THRESHOLD_PX = 60;
+  const SWIPE_MAX_VERTICAL_PX = 80;
 
   function isTyping() {
     const el = document.activeElement;
@@ -14,6 +16,48 @@
       el.isContentEditable
     );
   }
+
+  function blocksPageNavigation() {
+    const el = document.activeElement;
+    if (!el) {
+      return false;
+    }
+    if (el.isContentEditable) {
+      return true;
+    }
+    const tag = el.tagName;
+    if (tag === "TEXTAREA") {
+      return true;
+    }
+    if (tag === "INPUT") {
+      const type = (el.getAttribute("type") || "text").toLowerCase();
+      return type !== "button" && type !== "submit" && type !== "checkbox";
+    }
+    return false;
+  }
+
+  function pageNav() {
+    return document.querySelector("[data-page-nav]");
+  }
+
+  function navigatePage(direction) {
+    const nav = pageNav();
+    if (!nav) {
+      return;
+    }
+    const url =
+      direction === "next"
+        ? nav.getAttribute("data-next-url")
+        : nav.getAttribute("data-prev-url");
+    if (!url) {
+      return;
+    }
+    window.location.href = url;
+  }
+
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchTracking = false;
 
   const filterForm = document.getElementById("library-filter-form");
   const helpDialog = document.getElementById("keyboard-help");
@@ -127,25 +171,64 @@
     }
 
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-      if (isTyping()) {
+      if (blocksPageNavigation()) {
         return;
       }
 
-      const nav = document.querySelector("[data-page-nav]");
-      if (!nav) {
-        return;
-      }
-
-      const url =
-        event.key === "ArrowRight"
-          ? nav.getAttribute("data-next-url")
-          : nav.getAttribute("data-prev-url");
-      if (!url) {
+      if (!pageNav()) {
         return;
       }
 
       event.preventDefault();
-      window.location.href = url;
+      navigatePage(event.key === "ArrowRight" ? "next" : "prev");
     }
   });
+
+  document.addEventListener(
+    "touchstart",
+    (event) => {
+      if (!pageNav() || (helpDialog && helpDialog.open)) {
+        touchTracking = false;
+        return;
+      }
+      if (event.touches.length !== 1) {
+        touchTracking = false;
+        return;
+      }
+      touchStartX = event.touches[0].clientX;
+      touchStartY = event.touches[0].clientY;
+      touchTracking = true;
+    },
+    { passive: true }
+  );
+
+  document.addEventListener(
+    "touchend",
+    (event) => {
+      if (!touchTracking || !pageNav() || (helpDialog && helpDialog.open)) {
+        return;
+      }
+      touchTracking = false;
+      if (event.changedTouches.length !== 1) {
+        return;
+      }
+
+      const touch = event.changedTouches[0];
+      const deltaX = touch.clientX - touchStartX;
+      const deltaY = touch.clientY - touchStartY;
+
+      if (Math.abs(deltaX) < SWIPE_THRESHOLD_PX) {
+        return;
+      }
+      if (Math.abs(deltaY) > SWIPE_MAX_VERTICAL_PX) {
+        return;
+      }
+      if (Math.abs(deltaX) <= Math.abs(deltaY)) {
+        return;
+      }
+
+      navigatePage(deltaX < 0 ? "next" : "prev");
+    },
+    { passive: true }
+  );
 })();

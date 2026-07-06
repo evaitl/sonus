@@ -19,6 +19,8 @@ from sonus.cgi.common import (
     connect_rw,
     get_current_user,
     parse_track_metadata_form,
+    propagate_album_to_album_mates,
+    propagate_genre_to_album_mates,
     update_track_metadata,
 )
 from sonus.cgi.form import read_cgi_form
@@ -70,11 +72,34 @@ def main() -> None:
             return
 
         metadata = parse_track_metadata_form(form)
+        original_album = track.album
         conn = connect_rw()
         try:
             update_track_metadata(conn, track_id, metadata)
+            propagated_album = propagate_album_to_album_mates(
+                conn,
+                track_id=track_id,
+                old_album=original_album,
+                new_album=metadata.get("album"),
+            )
+            propagated = propagate_genre_to_album_mates(
+                conn,
+                track_id=track_id,
+                album=metadata.get("album"),
+                genre=metadata.get("genre"),
+            )
         finally:
             conn.close()
+
+        notice = "Metadata saved."
+        if propagated_album:
+            notice += (
+                f" Album updated for {propagated_album} other track(s) on this album."
+            )
+        if propagated:
+            notice += (
+                f" Genre applied to {propagated} other track(s) on this album."
+            )
 
         with connect() as conn:
             current_user = get_current_user(conn)
@@ -92,7 +117,7 @@ def main() -> None:
                 current_user,
                 playlists,
                 track_playlists,
-                notice="Metadata saved.",
+                notice=notice,
             )
         )
     except FileNotFoundError as exc:

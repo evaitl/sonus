@@ -467,7 +467,7 @@ def render_library(
       <dl>
         <dt><kbd>/</kbd></dt><dd>Focus title search</dd>
         <dt><kbd>Esc</kbd></dt><dd>Clear filters</dd>
-        <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous / next page</dd>
+        <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous / next page (swipe left / right on touch screens)</dd>
         <dt><kbd>?</kbd></dt><dd>Show this help</dd>
       </dl>
       <button type="button" data-keyboard-help-close>Close</button>

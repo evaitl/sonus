@@ -242,7 +242,7 @@ Sonus serves the library through a Python CGI frontend in `web/`.
 - **Administrators** — edit title/artist/album/genre and fetch album art (see `admins.txt`); enable **admin** in the header
 - **Fetch album art** — online cover art; same image applied to all tracks with matching album name
 - **Accounts** — optional sign-in for playlists; browsing and playback are open
-- **Keyboard shortcuts** — press <kbd>?</kbd> for help (`/` focus search, `Esc` clear, `←`/`→` change page)
+- **Keyboard shortcuts** — press <kbd>?</kbd> for help (`/` focus search, `Esc` clear, `←`/`→` change page, swipe left/right on touch screens)
 
 ### CGI environment variables
 

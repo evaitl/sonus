@@ -649,6 +649,62 @@ def track_ids_with_album(conn: sqlite3.Connection, album: str | None) -> list[in
     return [int(row[0]) for row in rows]
 
 
+def propagate_genre_to_album_mates(
+    conn: sqlite3.Connection,
+    *,
+    track_id: int,
+    album: str | None,
+    genre: str | None,
+) -> int:
+    """Set genre on same-album tracks that have no genre. Returns rows updated."""
+    cleaned_album = (album or "").strip()
+    cleaned_genre = (genre or "").strip()
+    if not cleaned_album or not cleaned_genre:
+        return 0
+    cursor = conn.execute(
+        """
+        UPDATE tracks SET genre = ?
+        WHERE is_missing = 0
+          AND id != ?
+          AND album IS NOT NULL
+          AND TRIM(album) != ''
+          AND LOWER(TRIM(album)) = LOWER(?)
+          AND (genre IS NULL OR TRIM(genre) = '')
+        """,
+        (cleaned_genre, track_id, cleaned_album),
+    )
+    conn.commit()
+    return int(cursor.rowcount or 0)
+
+
+def propagate_album_to_album_mates(
+    conn: sqlite3.Connection,
+    *,
+    track_id: int,
+    old_album: str | None,
+    new_album: str | None,
+) -> int:
+    """Set album on same-album tracks. Returns rows updated."""
+    cleaned_old_album = (old_album or "").strip()
+    if not cleaned_old_album:
+        return 0
+    cleaned_new_album = (new_album or "").strip()
+    new_value = cleaned_new_album or None
+    cursor = conn.execute(
+        """
+        UPDATE tracks SET album = ?
+        WHERE is_missing = 0
+          AND id != ?
+          AND album IS NOT NULL
+          AND TRIM(album) != ''
+          AND LOWER(TRIM(album)) = LOWER(?)
+        """,
+        (new_value, track_id, cleaned_old_album),
+    )
+    conn.commit()
+    return int(cursor.rowcount or 0)
+
+
 def update_tracks_art_paths(
     conn: sqlite3.Connection, paths: dict[int, str]
 ) -> None:
