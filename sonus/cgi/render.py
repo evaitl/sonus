@@ -342,7 +342,7 @@ def render_library(
 ) -> str:
     page_size_int = normalize_page_size(page_size)
     sort_dir = normalize_sort_dir(sort, sort_dir)
-    max_page = max(1, (filtered_count + page_size_int - 1) // page_size_int) if sort != "random" else 1
+    max_page = max(1, (filtered_count + page_size_int - 1) // page_size_int)
     filters_active = has_search_filters(
         title=selected_title,
         artist=selected_artist,
@@ -362,7 +362,7 @@ def render_library(
     )
     prev_url = ""
     next_url = ""
-    if sort != "random" and page > 1:
+    if page > 1:
         prev_url = cgi_script("index.py") + _filter_query(
             title=selected_title,
             artist=selected_artist,
@@ -373,7 +373,7 @@ def render_library(
             page_size=page_size_int,
             page=page - 1,
         )
-    if sort != "random" and page < max_page:
+    if page < max_page:
         next_url = cgi_script("index.py") + _filter_query(
             title=selected_title,
             artist=selected_artist,
@@ -495,8 +495,7 @@ def render_library(
     </div>
 """
 
-    if sort != "random":
-        body += f"""    <nav class="pagination" data-page-nav data-prev-url="{esc(prev_url)}" data-next-url="{esc(next_url)}">
+    body += f"""    <nav class="pagination" data-page-nav data-prev-url="{esc(prev_url)}" data-next-url="{esc(next_url)}">
       <span>Page {page} of {max_page}</span>
       {"<a href='" + esc(prev_url) + "'>← Previous</a>" if prev_url else "<span class='pagination__disabled'>← Previous</span>"}
       {"<a href='" + esc(next_url) + "'>Next →</a>" if next_url else "<span class='pagination__disabled'>Next →</span>"}

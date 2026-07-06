@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from sonus.cgi.common import (
+    FilterOptions,
     LibraryContext,
     adjacent_library_tracks,
     effective_library_for_track_nav,
@@ -15,7 +16,7 @@ from sonus.cgi.common import (
     track_library_nav_urls,
 )
 from sonus.cgi.form import CgiForm
-from sonus.cgi.render import _library_context_hidden_inputs, render_track
+from sonus.cgi.render import _library_context_hidden_inputs, render_library, render_track
 from sonus.cgi.common import TrackRow
 
 
@@ -175,6 +176,28 @@ class RenderTrackNavTests(unittest.TestCase):
         self.assertIn('data-next-url="track.py?id=2"', html)
         self.assertIn("Previous track", html)
         self.assertIn("Next track", html)
+
+
+class RenderLibraryRandomPaginationTests(unittest.TestCase):
+    def test_random_sort_renders_page_navigation(self) -> None:
+        tracks = [_sample_track(id=index) for index in range(1, 51)]
+        html = render_library(
+            tracks,
+            filtered_count=120,
+            library_total=120,
+            page=1,
+            options=FilterOptions(genres=[], albums=[]),
+            selected_title="",
+            selected_artist="",
+            selected_album="",
+            selected_genre="",
+            sort="random",
+            sort_dir="asc",
+            page_size=50,
+        )
+        self.assertIn('data-page-nav', html)
+        self.assertIn('data-next-url="', html)
+        self.assertIn("Page 1 of 3", html)
 
 
 if __name__ == "__main__":

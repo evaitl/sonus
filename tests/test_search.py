@@ -84,6 +84,32 @@ class ListTracksSearchTests(unittest.TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(tracks[0].title, "Bohemian Rhapsody")
 
+    def test_random_sort_supports_pagination(self) -> None:
+        for track_id in range(3, 31):
+            self.conn.execute(
+                """
+                INSERT INTO tracks (
+                    id, file_path, file_name, format, file_size, file_mtime,
+                    title, sort_title, artist, album, genre,
+                    first_seen_at, last_scanned_at, is_missing
+                ) VALUES (?, ?, ?, 'mp3', 1, 1.0, ?, ?, 'Artist', 'Album', 'Rock', 't', 't', 0)
+                """,
+                (track_id, f"/{track_id}.mp3", f"{track_id}.mp3", f"Song {track_id}", f"song {track_id}"),
+            )
+        self.conn.commit()
+
+        page_one, count, _, page, _ = list_tracks(
+            self.conn, sort="random", page=1, page_size=25
+        )
+        page_two, _, _, page_two_num, _ = list_tracks(
+            self.conn, sort="random", page=2, page_size=25
+        )
+        self.assertEqual(count, 30)
+        self.assertEqual(page, 1)
+        self.assertEqual(page_two_num, 2)
+        self.assertEqual(len(page_one), 25)
+        self.assertEqual(len(page_two), 5)
+
 
 if __name__ == "__main__":
     unittest.main()

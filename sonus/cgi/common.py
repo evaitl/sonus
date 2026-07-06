@@ -603,8 +603,13 @@ def list_tracks(
 
     page = max(1, page)
 
+    max_page = max(1, (filtered_count + page_size - 1) // page_size)
+    if page > max_page:
+        page = max_page
+
     if sort == "random":
-        limit = min(page_size, filtered_count) if filtered_count else 0
+        offset = (page - 1) * page_size
+        limit = min(page_size, max(0, filtered_count - offset))
         if limit == 0:
             return [], filtered_count, library_total, page, options
         rows = conn.execute(
@@ -613,15 +618,11 @@ def list_tracks(
             {query.from_sql}
             WHERE {query.where_sql}
             ORDER BY RANDOM()
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            [*query.params, limit],
+            [*query.params, limit, offset],
         ).fetchall()
         return [row_to_track(row) for row in rows], filtered_count, library_total, page, options
-
-    max_page = max(1, (filtered_count + page_size - 1) // page_size)
-    if page > max_page:
-        page = max_page
 
     offset = (page - 1) * page_size
     rows = conn.execute(
