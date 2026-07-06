@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -11,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from sonus.audio_meta import AudioMetaError, extract_art, read_metadata
 from sonus.config import PROJECT_ROOT, resolve_art_dir, resolve_scan_path
+from sonus.console import format_scan_error, has_bad_filename_unicode, safe_console_text
 from sonus.database import (
     find_track_by_content_hash,
     mark_missing_tracks,
@@ -80,11 +80,19 @@ def _record_skip(
     skipped.append(SkippedEntry(path.resolve(), reason))
 
 
-def safe_console_text(value: str | Path) -> str:
-    """Make text safe to print on the current stdout encoding."""
-    text = str(value)
-    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
-    return text.encode(encoding, errors="replace").decode(encoding)
+_BAD_FILENAME_UNICODE = "bad filename unicode"
+
+
+def _skip_bad_filename(
+    skipped: list[SkippedEntry] | None,
+    path: Path,
+    *,
+    verbose: bool,
+) -> bool:
+    if not has_bad_filename_unicode(path):
+        return False
+    _record_skip(skipped, path, _BAD_FILENAME_UNICODE, verbose=verbose)
+    return True
 
 
 def print_skipped_entries(entries: list[SkippedEntry]) -> None:
@@ -125,7 +133,7 @@ def collect_track_files(
         root = resolve_scan_path(root)
         if not root.exists():
             message = "path not found"
-            errors.append(f"{message}: {root}")
+            errors.append(format_scan_error(root, message))
             _record_skip(skipped, root, message, verbose=verbose)
             continue
         if root.is_file():
@@ -155,14 +163,19 @@ def collect_track_files(
                             verbose=verbose,
                         )
                         continue
-                    candidates.append(path.resolve())
+                    resolved = path.resolve()
+                    if _skip_bad_filename(skipped, resolved, verbose=verbose):
+                        continue
+                    candidates.append(resolved)
             except OSError as exc:
                 message = f"cannot read directory ({exc})"
-                errors.append(f"{root}: {message}")
+                errors.append(format_scan_error(root, message))
                 _record_skip(skipped, root, message, verbose=verbose)
                 continue
 
         for path in candidates:
+            if _skip_bad_filename(skipped, path, verbose=verbose):
+                continue
             suffix = path.suffix.lower()
             if suffix == WMA_EXTENSION:
                 try:
@@ -171,18 +184,22 @@ def collect_track_files(
                     )
                     if not mp3_path.is_file():
                         errors.append(
-                            f"{path}: transcoded MP3 missing at {mp3_path}"
+                            format_scan_error(
+                                path, f"transcoded MP3 missing at {mp3_path}"
+                            )
                         )
                         continue
                     if was_transcoded:
                         transcoded += 1
+                    if _skip_bad_filename(skipped, mp3_path, verbose=verbose):
+                        continue
                     if mp3_path not in seen:
                         seen.add(mp3_path)
                         files.append(mp3_path)
                 except TranscodeError as exc:
-                    errors.append(f"{path}: {exc}")
+                    errors.append(format_scan_error(path, str(exc)))
                 except OSError as exc:
-                    errors.append(f"{path}: {exc}")
+                    errors.append(format_scan_error(path, str(exc)))
                 continue
             if suffix in INDEX_EXTENSIONS:
                 if path.with_suffix(WMA_EXTENSION).is_file():
@@ -350,7 +367,9 @@ def scan_paths(
 
             meta = read_metadata(file_path)
             if meta.errors and verbose:
-                stats.errors.extend(f"{file_path}: {err}" for err in meta.errors)
+                stats.errors.extend(
+                    format_scan_error(file_path, err) for err in meta.errors
+                )
 
             track = upsert_track(
                 session,
@@ -392,12 +411,12 @@ def scan_paths(
                 print(f"indexed: {safe_console_text(title)}", flush=True)
         except AudioMetaError as exc:
             session.rollback()
-            stats.errors.append(f"{file_path}: {exc}")
+            stats.errors.append(format_scan_error(file_path, str(exc)))
             if on_progress:
                 on_progress(index, total, file_path, "error")
         except Exception as exc:
             session.rollback()
-            stats.errors.append(f"{file_path}: {exc}")
+            stats.errors.append(format_scan_error(file_path, str(exc)))
             if on_progress:
                 on_progress(index, total, file_path, "error")
 

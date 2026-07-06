@@ -26,7 +26,7 @@ import typer
 
 from sonus.cli import app
 
-_COMMANDS = frozenset({"scan", "fetch-album-art", "fix-artists", "user"})
+_COMMANDS = frozenset({"scan", "fetch-album-art", "fix-artists", "fix-titles", "user"})
 
 
 def _ensure_scan_command(argv: list[str] | None = None) -> None:

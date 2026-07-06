@@ -44,7 +44,7 @@ sonus/
   auth.py           ← scrypt passwords, signed session cookies, admin-mode cookie
   admins.py         ← admins.txt lookup, admin mode gate
   cgi/
-    common.py       ← DB queries, FTS search, playlists, auth helpers
+    common.py       ← DB queries, library search, playlists, auth helpers
     form.py         ← CGI request parsing (urlencoded + multipart; no deprecated cgi module)
     track_page.py   ← shared track detail rendering for CGI scripts
     render.py       ← server-side HTML
@@ -66,7 +66,7 @@ web/
 ### Data flow
 
 1. **Scan:** walks configured paths; transcodes WMA to MP3 when needed; skips unchanged files by size/mtime before SHA-1; reads tags with Mutagen; fills artist from filename when tags are empty; upserts `data/library.db`; saves embedded art to `data/art/`; removes stale WMA index rows; marks tracks missing when files disappear.
-2. **Browse:** CGI scripts read the database and render HTML with server-side pagination and filters. Text search uses **FTS5** (`tracks_fts`), not `LIKE`.
+2. **Browse:** CGI scripts read the database and render HTML with server-side pagination and filters. Text search uses case-insensitive **`LIKE`** partial matching on `tracks` columns.
 3. **Play:** `stream.py` serves audio with HTTP Range support. Browsers play MP3/FLAC/OGG/etc.; WMA is not played in-browser (hence transcoding).
 4. **Playlists:** signed-in users create per-user playlists; tracks are shared library-wide.
 5. **Fetch album art:** MusicBrainz + Cover Art Archive, iTunes fallback; updates `art_path` for all tracks with the same album name (web UI: admins only).
@@ -85,7 +85,7 @@ Create a personal music library web app similar to ExLibris: search, display, pl
 ### What was built
 
 - **Python package** `sonus` with Typer CLI (`sonus scan`)
-- **SQLite schema** with FTS5 over title, artist, album, genre (`001_initial.sql`)
+- **SQLite schema** with indexes on title, artist, album, genre (`001_initial.sql`)
 - **Playlists** (`002_playlists.sql`) — playlist and playlist_tracks tables
 - **Scanner** for MP3, FLAC, OGG, Opus, M4A, AAC, WAV, WMA using Mutagen
 - **CGI web UI:** library index, track detail, streaming, album art, playlists
@@ -158,11 +158,11 @@ Will the site scale to ~32,000 tracks? Implement optimizations.
 - Before SHA-1, skip files whose path already exists in the DB with the same **file size** and **mtime** and a stored content hash
 - First scan still hashes every file; nightly rescans avoid reading unchanged audio
 
-### FTS5 search
+### Library text search
 
-- Web search moved from `LIKE '%word%'` to **FTS5** `MATCH` queries on `tracks_fts`
-- Migration **`004_scale.sql`**: `idx_tracks_content_hash`; rebuild FTS to index **`sort_title`**
-- Search matches whole words (tokens), not arbitrary substrings
+- Title, artist, and album filters use case-insensitive **`LIKE '%term%'`** on indexed `tracks` columns
+- Migration **`005_drop_fts.sql`**: removed FTS5 table and triggers (faster scans; ~10ms search at 25k tracks)
+- Migration **`004_scale.sql`**: `idx_tracks_content_hash`; added **`sort_title`** to tracks
 
 ### Schema version 4
 
@@ -202,7 +202,7 @@ Apache CGI deployment is unchanged; only request parsing moved off the removed s
 ### Track metadata editing
 
 - Admins can edit **title**, **artist**, **album**, **genre** on the track detail page
-- **`track_edit.py`** POST handler; updates SQLite (FTS triggers keep search in sync)
+- **`track_edit.py`** POST handler; updates SQLite
 - Manual edits can be overwritten on rescan if the file’s size/mtime changes and tags are re-read
 
 ### Album-wide album art
@@ -269,7 +269,7 @@ sonus user create USERNAME        # create web login
 
 ## Web UI features
 
-- Search by title, artist, album via **FTS5** (debounced; each word in a field must match)
+- Search by title, artist, album via partial **`LIKE`** match (debounced; each word in a field must match)
 - Genre filter — exact match dropdown
 - Sort by title, artist, album, year, duration, size, scanned, random
 - Pagination (25 / 50 / 100 / 200 per page)

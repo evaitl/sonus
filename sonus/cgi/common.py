@@ -470,37 +470,36 @@ def _search_words(text: str) -> list[str]:
     return [word for word in text.split() if word]
 
 
-def _fts_quote(term: str) -> str:
-    return '"' + term.replace('"', '""') + '"'
+_LIKE_ESCAPE = "\\"
 
 
-def _fts_column_match(columns: str, word: str) -> str:
-    return f"{{{columns}}} : {_fts_quote(word)}"
+def _like_escape(term: str) -> str:
+    return (
+        term.replace(_LIKE_ESCAPE, _LIKE_ESCAPE + _LIKE_ESCAPE)
+        .replace("%", _LIKE_ESCAPE + "%")
+        .replace("_", _LIKE_ESCAPE + "_")
+    )
 
 
-def _build_fts_match(
+def _like_contains_pattern(term: str) -> str:
+    return f"%{_like_escape(term)}%"
+
+
+def _append_partial_match_filters(
+    where: list[str],
+    params: list[object],
     *,
-    title: str = "",
-    artist: str = "",
-    album: str = "",
-) -> str | None:
-    clauses: list[str] = []
-    for word in _search_words(title):
-        clauses.append(
-            f"({_fts_column_match('title', word)} OR "
-            f"{_fts_column_match('sort_title', word)} OR "
-            f"{_fts_column_match('file_name', word)})"
-        )
-    for word in _search_words(artist):
-        clauses.append(
-            f"({_fts_column_match('artist', word)} OR "
-            f"{_fts_column_match('album_artist', word)})"
-        )
-    for word in _search_words(album):
-        clauses.append(_fts_column_match("album", word))
-    if not clauses:
-        return None
-    return " AND ".join(clauses)
+    words: list[str],
+    columns: list[str],
+) -> None:
+    for word in words:
+        pattern = _like_contains_pattern(word)
+        checks = [
+            f"({column} LIKE ? ESCAPE '{_LIKE_ESCAPE}' COLLATE NOCASE)"
+            for column in columns
+        ]
+        where.append("(" + " OR ".join(checks) + ")")
+        params.extend([pattern] * len(columns))
 
 
 def has_search_filters(
@@ -527,13 +526,24 @@ def _track_filter(
     where: list[str] = ["tracks.is_missing = 0"]
     from_sql = "FROM tracks"
 
-    fts_match = _build_fts_match(title=title, artist=artist, album=album)
-    if fts_match:
-        from_sql = (
-            "FROM tracks INNER JOIN tracks_fts ON tracks_fts.rowid = tracks.id"
-        )
-        where.append("tracks_fts MATCH ?")
-        params.append(fts_match)
+    _append_partial_match_filters(
+        where,
+        params,
+        words=_search_words(title),
+        columns=["tracks.title", "tracks.sort_title", "tracks.file_name"],
+    )
+    _append_partial_match_filters(
+        where,
+        params,
+        words=_search_words(artist),
+        columns=["tracks.artist", "tracks.album_artist"],
+    )
+    _append_partial_match_filters(
+        where,
+        params,
+        words=_search_words(album),
+        columns=["tracks.album"],
+    )
 
     if genre:
         where.append("tracks.genre = ?")

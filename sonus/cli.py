@@ -5,6 +5,7 @@ import typer
 from sonus.config import load_settings, resolve_art_dir, resolve_database_path
 from sonus.database import get_engine, init_db
 from sonus.fetch_art import FetchArtError, enrich_track_art
+from sonus.console import safe_console_text
 from sonus.scanner import print_scan_progress, print_skipped_entries, scan_paths
 from sonus.users import UserError, register_user
 
@@ -107,7 +108,7 @@ def scan(
     if stats.errors:
         typer.echo(f"{len(stats.errors)} issue(s):")
         for err in stats.errors:
-            typer.echo(f"  - {err}")
+            typer.echo(f"  - {safe_console_text(err)}")
 
 
 @app.command("fetch-album-art")
@@ -213,7 +214,7 @@ def fetch_album_art(
         if errors:
             typer.echo(f"{len(errors)} issue(s):")
             for err in errors:
-                typer.echo(f"  - {err}")
+                typer.echo(f"  - {safe_console_text(err)}")
     finally:
         conn.close()
 
@@ -309,6 +310,69 @@ def fix_artists(
         conn.close()
 
     typer.echo(f"Updated artist for {updated} track(s).")
+
+
+@app.command("fix-titles")
+def fix_titles(
+    config: Path | None = typer.Option(
+        None, "--config", "-c", help="Path to config.yaml"
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Print each updated title"
+    ),
+) -> None:
+    """Remove leading track-number prefixes from stored titles."""
+    from sonus.title_cleanup import clean_leading_track_number_title
+
+    settings = load_settings(config)
+    db_path = resolve_database_path(settings.database_path)
+    engine = get_engine(db_path)
+    init_db(engine)
+
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, title, sort_title
+            FROM tracks
+            WHERE is_missing = 0
+            """
+        ).fetchall()
+
+        updated = 0
+        for row in rows:
+            title = row["title"] or ""
+            sort_title = row["sort_title"] or ""
+            new_title = clean_leading_track_number_title(title) if title else None
+            new_sort = (
+                clean_leading_track_number_title(sort_title) if sort_title else None
+            )
+
+            updates: dict[str, str] = {}
+            if new_title and new_title != title:
+                updates["title"] = new_title
+            if new_sort and new_sort != sort_title:
+                updates["sort_title"] = new_sort
+            if not updates:
+                continue
+
+            assignments = ", ".join(f"{column} = ?" for column in updates)
+            conn.execute(
+                f"UPDATE tracks SET {assignments} WHERE id = ?",
+                [*updates.values(), row["id"]],
+            )
+            updated += 1
+            if verbose:
+                label = updates.get("title", title)
+                typer.echo(f"updated: {label!r}")
+        conn.commit()
+    finally:
+        conn.close()
+
+    typer.echo(f"Updated title for {updated} track(s).")
 
 
 if __name__ == "__main__":
