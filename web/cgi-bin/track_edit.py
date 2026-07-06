@@ -18,6 +18,7 @@ from sonus.cgi.common import (
     connect,
     connect_rw,
     get_current_user,
+    library_context_from_form,
     parse_track_metadata_form,
     propagate_album_to_album_mates,
     propagate_genre_to_album_mates,
@@ -25,7 +26,7 @@ from sonus.cgi.common import (
 )
 from sonus.cgi.form import read_cgi_form
 from sonus.cgi.render import render_error
-from sonus.cgi.track_page import load_track_context, render_track_page
+from sonus.cgi.track_page import render_track_page, track_page_with_library_nav
 
 
 def _html(body: str) -> None:
@@ -47,12 +48,35 @@ def main() -> None:
         return
 
     track_id = int(raw_id)
+    library = library_context_from_form(form)
+
+    def _render_track_page(**kwargs: object) -> None:
+        with connect() as conn:
+            current_user = get_current_user(conn)
+            track, playlists, track_playlists, prev_url, next_url = (
+                track_page_with_library_nav(conn, track_id, current_user, library)
+            )
+        if track is None:
+            _html(render_error("Track not found.", status_hint="Not found"))
+            return
+        _html(
+            render_track_page(
+                track,
+                current_user,
+                playlists,
+                track_playlists,
+                library=library,
+                prev_url=prev_url,
+                next_url=next_url,
+                **kwargs,
+            )
+        )
 
     try:
         with connect() as conn:
             current_user = get_current_user(conn)
-            track, playlists, track_playlists = load_track_context(
-                conn, track_id, current_user
+            track, playlists, track_playlists, prev_url, next_url = (
+                track_page_with_library_nav(conn, track_id, current_user, library)
             )
 
         if track is None or track.is_missing:
@@ -66,6 +90,9 @@ def main() -> None:
                     current_user,
                     playlists,
                     track_playlists,
+                    library=library,
+                    prev_url=prev_url,
+                    next_url=next_url,
                     error="Only administrators can edit track metadata.",
                 )
             )
@@ -101,45 +128,11 @@ def main() -> None:
                 f" Genre applied to {propagated} other track(s) on this album."
             )
 
-        with connect() as conn:
-            current_user = get_current_user(conn)
-            track, playlists, track_playlists = load_track_context(
-                conn, track_id, current_user
-            )
-
-        if track is None:
-            _html(render_error("Track not found after update.", status_hint="Not found"))
-            return
-
-        _html(
-            render_track_page(
-                track,
-                current_user,
-                playlists,
-                track_playlists,
-                notice=notice,
-            )
-        )
+        _render_track_page(notice=notice)
     except FileNotFoundError as exc:
         _html(render_error(str(exc), status_hint="Database unavailable"))
     except PermissionError as exc:
-        with connect() as conn:
-            current_user = get_current_user(conn)
-            track, playlists, track_playlists = load_track_context(
-                conn, track_id, current_user
-            )
-        if track is None:
-            _html(render_error(str(exc)))
-            return
-        _html(
-            render_track_page(
-                track,
-                current_user,
-                playlists,
-                track_playlists,
-                error=str(exc),
-            )
-        )
+        _render_track_page(error=str(exc))
     except sqlite3.OperationalError as exc:
         message = str(exc)
         if "readonly" in message.lower():
@@ -147,42 +140,10 @@ def main() -> None:
                 "Database is read-only for the web server. Grant www-data write "
                 "access to the data/ directory (see scripts/setup-data-dir.sh)."
             )
-        with connect() as conn:
-            current_user = get_current_user(conn)
-            track, playlists, track_playlists = load_track_context(
-                conn, track_id, current_user
-            )
-        if track is None:
-            _html(render_error(message))
-            return
-        _html(
-            render_track_page(
-                track,
-                current_user,
-                playlists,
-                track_playlists,
-                error=message,
-            )
-        )
+        _render_track_page(error=message)
     except Exception:
         traceback.print_exc(file=sys.stderr)
-        with connect() as conn:
-            current_user = get_current_user(conn)
-            track, playlists, track_playlists = load_track_context(
-                conn, track_id, current_user
-            )
-        if track is None:
-            _html(render_error("Unexpected error while saving metadata."))
-            return
-        _html(
-            render_track_page(
-                track,
-                current_user,
-                playlists,
-                track_playlists,
-                error="Unexpected error while saving metadata.",
-            )
-        )
+        _render_track_page(error="Unexpected error while saving metadata.")
 
 
 if __name__ == "__main__":

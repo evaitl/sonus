@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from sonus.auth import (
     SESSION_COOKIE,
@@ -180,8 +180,70 @@ def admin_mode_action() -> str:
 TRACK_METADATA_FIELDS = frozenset({"title", "artist", "album", "genre"})
 
 
-def track_href(track_id: int) -> str:
-    return f"{cgi_script('track.py')}?id={track_id}"
+@dataclass(frozen=True)
+class LibraryContext:
+    title: str = ""
+    artist: str = ""
+    album: str = ""
+    genre: str = ""
+    sort: str = "title"
+    sort_dir: str = ""
+
+
+def parse_library_context(
+    *,
+    title: str = "",
+    artist: str = "",
+    album: str = "",
+    genre: str = "",
+    sort: str = "title",
+    sort_dir: str = "",
+) -> LibraryContext:
+    return LibraryContext(
+        title=title or "",
+        artist=artist or "",
+        album=album or "",
+        genre=genre or "",
+        sort=sort or "title",
+        sort_dir=sort_dir or "",
+    )
+
+
+def library_context_from_form(form: object) -> LibraryContext:
+    return parse_library_context(
+        title=getattr(form, "getfirst")("title", "") or "",
+        artist=getattr(form, "getfirst")("artist", "") or "",
+        album=getattr(form, "getfirst")("album", "") or "",
+        genre=getattr(form, "getfirst")("genre", "") or "",
+        sort=getattr(form, "getfirst")("sort", "title") or "title",
+        sort_dir=getattr(form, "getfirst")("sort_dir", "") or "",
+    )
+
+
+def library_context_params(library: LibraryContext) -> dict[str, str]:
+    sort_dir = normalize_sort_dir(library.sort, library.sort_dir)
+    params: dict[str, str] = {}
+    if library.title:
+        params["title"] = library.title
+    if library.artist:
+        params["artist"] = library.artist
+    if library.album:
+        params["album"] = library.album
+    if library.genre:
+        params["genre"] = library.genre
+    if library.sort and library.sort != "title":
+        params["sort"] = library.sort
+    if sort_dir != DEFAULT_SORT_DIR.get(library.sort, "asc"):
+        params["sort_dir"] = sort_dir
+    return params
+
+
+def track_href(track_id: int, *, library: LibraryContext | None = None) -> str:
+    url = f"{cgi_script('track.py')}?id={track_id}"
+    extra = library_context_params(library) if library else {}
+    if not extra:
+        return url
+    return f"{url}&{urlencode(extra)}"
 
 
 def playlist_href(playlist_id: int) -> str:
@@ -541,6 +603,54 @@ def list_tracks(
     return [row_to_track(row) for row in rows], filtered_count, library_total, page, options
 
 
+def adjacent_library_tracks(
+    conn: sqlite3.Connection,
+    track_id: int,
+    library: LibraryContext,
+) -> tuple[int | None, int | None]:
+    """Return previous/next track ids in the filtered library sort order."""
+    if library.sort == "random":
+        return None, None
+    sort_dir = normalize_sort_dir(library.sort, library.sort_dir)
+    query = _track_filter(
+        title=library.title,
+        artist=library.artist,
+        album=library.album,
+        genre=library.genre,
+        sort=library.sort,
+        sort_dir=sort_dir,
+    )
+    row = conn.execute(
+        f"""
+        SELECT prev_id, next_id FROM (
+          SELECT tracks.id,
+            LAG(tracks.id) OVER (ORDER BY {query.order_by}, tracks.id) AS prev_id,
+            LEAD(tracks.id) OVER (ORDER BY {query.order_by}, tracks.id) AS next_id
+          {query.from_sql}
+          WHERE {query.where_sql}
+        )
+        WHERE id = ?
+        """,
+        [*query.params, track_id],
+    ).fetchone()
+    if row is None:
+        return None, None
+    prev_id = int(row["prev_id"]) if row["prev_id"] is not None else None
+    next_id = int(row["next_id"]) if row["next_id"] is not None else None
+    return prev_id, next_id
+
+
+def track_library_nav_urls(
+    conn: sqlite3.Connection,
+    track_id: int,
+    library: LibraryContext,
+) -> tuple[str, str]:
+    prev_id, next_id = adjacent_library_tracks(conn, track_id, library)
+    prev_url = track_href(prev_id, library=library) if prev_id else ""
+    next_url = track_href(next_id, library=library) if next_id else ""
+    return prev_url, next_url
+
+
 def get_track(conn: sqlite3.Connection, track_id: int) -> TrackRow | None:
     row = conn.execute("SELECT * FROM tracks WHERE id = ?", (track_id,)).fetchone()
     return row_to_track(row) if row else None
@@ -630,6 +740,10 @@ def update_track_metadata(
     update_track_fields(conn, track_id, fields)
 
 
+def track_has_placeholder_art(track: TrackRow) -> bool:
+    return not (track.art_path or "").strip()
+
+
 def track_ids_with_album(conn: sqlite3.Connection, album: str | None) -> list[int]:
     """Return track ids sharing the same album name (case-insensitive)."""
     cleaned = (album or "").strip()
@@ -642,6 +756,28 @@ def track_ids_with_album(conn: sqlite3.Connection, album: str | None) -> list[in
           AND album IS NOT NULL
           AND TRIM(album) != ''
           AND LOWER(TRIM(album)) = LOWER(?)
+        ORDER BY id
+        """,
+        (cleaned,),
+    ).fetchall()
+    return [int(row[0]) for row in rows]
+
+
+def track_ids_with_album_missing_art(
+    conn: sqlite3.Connection, album: str | None
+) -> list[int]:
+    """Return same-album track ids that have no saved album art."""
+    cleaned = (album or "").strip()
+    if not cleaned:
+        return []
+    rows = conn.execute(
+        """
+        SELECT id FROM tracks
+        WHERE is_missing = 0
+          AND album IS NOT NULL
+          AND TRIM(album) != ''
+          AND LOWER(TRIM(album)) = LOWER(?)
+          AND (art_path IS NULL OR TRIM(art_path) = '')
         ORDER BY id
         """,
         (cleaned,),

@@ -182,7 +182,7 @@ Default location: `admins.txt` in the Sonus install directory. Override with `da
 evaitl
 ```
 
-CLI `sonus fetch-album-art` is not restricted — only the web UI admin actions (`fetch_art.py`, `track_edit.py`).
+CLI `sonus fetch-album-art` is not restricted — only replacing existing art on the web UI requires admin (`fetch_art.py`, `track_edit.py`).
 
 ### Web server write access (Apache)
 
@@ -239,10 +239,10 @@ Sonus serves the library through a Python CGI frontend in `web/`.
 - **Sort** by title, artist, album, year, duration, size, last scanned, or random
 - **Play** tracks in the browser with a persistent bottom player bar
 - **Playlists** — per-user playlists (sign in to create, add tracks, play all)
-- **Administrators** — edit title/artist/album/genre and fetch album art (see `admins.txt`); enable **admin** in the header
-- **Fetch album art** — online cover art; same image applied to all tracks with matching album name
+- **Administrators** — edit title/artist/album/genre (see `admins.txt`); enable **admin** in the header. Anyone can **fetch album art** when the track still shows placeholder art; admins can fetch or replace art anytime.
+- **Fetch album art** — online cover art; admins apply the same image to all tracks with matching album name; non-admins only update tracks on that album that are still missing art
 - **Accounts** — optional sign-in for playlists; browsing and playback are open
-- **Keyboard shortcuts** — press <kbd>?</kbd> for help (`/` focus search, `Esc` clear, `←`/`→` change page, swipe left/right on touch screens)
+- **Keyboard shortcuts** — press <kbd>?</kbd> for help on the library (`/` focus search, `Esc` clear, `←`/`→` change page or track, swipe left/right on touch screens)
 
 ### CGI environment variables
 
@@ -313,7 +313,7 @@ Environment variables (prefix `SONUS_`) override config values, for example `SON
 
 1. **Scanner** (`sonus scan`) indexes audio files and writes metadata to SQLite. WMA is converted to MP3 for browser playback; only MP3 rows are stored. Rescans skip unchanged files by size/mtime; deleted files are marked missing.
 2. **Web UI** (`web/cgi-bin/`) reads the database, streams audio, and manages per-user playlists. Search uses FTS5 over title, artist, album, and related fields.
-3. **Album art** can be fetched online with `sonus fetch-album-art` or from the track detail page (admins). Matching album names receive the same artwork.
+3. **Album art** can be fetched online with `sonus fetch-album-art` or from the track detail page when art is missing (anyone) or anytime (admins). Matching album names receive the same artwork; non-admin fetches skip tracks that already have art.
 4. **Artist backfill** with `sonus fix-artists` parses filenames when tags are empty.
 5. **Administrators** edit metadata in the web UI when listed in `admins.txt` and **admin** mode is enabled in the header.
 

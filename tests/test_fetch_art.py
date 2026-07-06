@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from sonus.cgi.common import track_ids_with_album
+from sonus.cgi.common import track_ids_with_album, track_ids_with_album_missing_art
 from sonus.fetch_art import apply_cover_bytes_to_tracks
 
 
@@ -43,6 +43,31 @@ class TrackIdsWithAlbumTests(unittest.TestCase):
             )
             self.assertEqual(track_ids_with_album(conn, ""), [])
             self.assertEqual(track_ids_with_album(conn, None), [])
+            conn.close()
+
+
+class TrackIdsWithAlbumMissingArtTests(unittest.TestCase):
+    def test_finds_only_tracks_without_art(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "test.db"
+            conn = sqlite3.connect(db)
+            conn.executescript(
+                """
+                CREATE TABLE tracks (
+                    id INTEGER PRIMARY KEY,
+                    album TEXT,
+                    is_missing INTEGER NOT NULL DEFAULT 0,
+                    art_path TEXT
+                );
+                INSERT INTO tracks (id, album, is_missing, art_path) VALUES
+                    (1, 'Abbey Road', 0, NULL),
+                    (2, 'abbey road', 0, ''),
+                    (3, 'Abbey Road', 0, 'art/3/cover.jpg'),
+                    (4, 'Other', 0, NULL);
+                """
+            )
+            ids = track_ids_with_album_missing_art(conn, "Abbey Road")
+            self.assertEqual(ids, [1, 2])
             conn.close()
 
 

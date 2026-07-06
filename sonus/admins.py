@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from sonus.auth import ADMIN_MODE_COOKIE, parse_cookie_header
-from sonus.cgi.common import UserRow, project_root
+from sonus.cgi.common import TrackRow, UserRow, project_root, track_has_placeholder_art
 
 
 def admins_file_path() -> Path:
@@ -53,5 +53,7 @@ def user_is_admin(user: UserRow | None) -> bool:
     return user_is_admin_listed(user) and admin_mode_enabled()
 
 
-def user_can_fetch_art(user: UserRow | None) -> bool:
-    return user_is_admin(user)
+def user_can_fetch_art(user: UserRow | None, track: TrackRow) -> bool:
+    if user_is_admin(user):
+        return True
+    return track_has_placeholder_art(track)

@@ -9,6 +9,7 @@ from unittest import mock
 from sonus.admins import (
     admin_mode_enabled,
     parse_admins_text,
+    user_can_fetch_art,
     user_is_admin,
     user_is_admin_listed,
 )
@@ -17,30 +18,32 @@ from sonus.cgi.form import CgiForm
 from sonus.cgi.render import _header_auth, render_track
 
 
-def _sample_track() -> TrackRow:
-    return TrackRow(
-        id=1,
-        file_path="/music/a.mp3",
-        file_name="a.mp3",
-        format="mp3",
-        file_size=100,
-        file_mtime=1.0,
-        content_hash="abc",
-        title="Song",
-        sort_title=None,
-        artist="Artist",
-        album="Album",
-        album_artist=None,
-        track_number=None,
-        disc_number=None,
-        year=None,
-        genre="Rock",
-        duration_seconds=120.0,
-        art_path=None,
-        first_seen_at="2026-01-01T00:00:00Z",
-        last_scanned_at="2026-01-01T00:00:00Z",
-        is_missing=0,
-    )
+def _sample_track(**overrides: object) -> TrackRow:
+    base = {
+        "id": 1,
+        "file_path": "/music/a.mp3",
+        "file_name": "a.mp3",
+        "format": "mp3",
+        "file_size": 100,
+        "file_mtime": 1.0,
+        "content_hash": "abc",
+        "title": "Song",
+        "sort_title": None,
+        "artist": "Artist",
+        "album": "Album",
+        "album_artist": None,
+        "track_number": None,
+        "disc_number": None,
+        "year": None,
+        "genre": "Rock",
+        "duration_seconds": 120.0,
+        "art_path": None,
+        "first_seen_at": "2026-01-01T00:00:00Z",
+        "last_scanned_at": "2026-01-01T00:00:00Z",
+        "is_missing": 0,
+    }
+    base.update(overrides)
+    return TrackRow(**base)
 
 
 class ParseAdminsTextTests(unittest.TestCase):
@@ -100,11 +103,29 @@ class HeaderAdminToggleTests(unittest.TestCase):
         self.assertNotIn("admin_mode.py", html)
 
 
+class UserCanFetchArtTests(unittest.TestCase):
+    def test_admin_can_fetch_even_with_art(self) -> None:
+        track = _sample_track(art_path="art/1/cover.jpg")
+        user = UserRow(id=1, username="alice")
+        with mock.patch("sonus.admins.user_is_admin", return_value=True):
+            self.assertTrue(user_can_fetch_art(user, track))
+
+    def test_non_admin_can_fetch_placeholder_only(self) -> None:
+        user = UserRow(id=2, username="bob")
+        placeholder = _sample_track(art_path=None)
+        with_art = _sample_track(art_path="art/1/cover.jpg")
+        with mock.patch("sonus.admins.user_is_admin", return_value=False):
+            self.assertTrue(user_can_fetch_art(user, placeholder))
+            self.assertFalse(user_can_fetch_art(user, with_art))
+
+
 class TrackAdminUiTests(unittest.TestCase):
     def test_admin_mode_sees_fetch_and_edit(self) -> None:
         track = _sample_track()
         user = UserRow(id=1, username="admin")
-        html = render_track(track, [], [], current_user=user, is_admin=True)
+        html = render_track(
+            track, [], [], current_user=user, is_admin=True, can_fetch_art=True
+        )
         self.assertIn("Fetch album art", html)
         self.assertIn("Edit metadata", html)
         self.assertIn('name="title"', html)
@@ -115,6 +136,33 @@ class TrackAdminUiTests(unittest.TestCase):
         track = _sample_track()
         user = UserRow(id=2, username="regular")
         html = render_track(track, [], [], current_user=user, is_admin=False)
+        self.assertNotIn("Edit metadata", html)
+
+    def test_non_admin_sees_fetch_for_placeholder_art(self) -> None:
+        track = _sample_track(art_path=None)
+        user = UserRow(id=2, username="regular")
+        html = render_track(
+            track,
+            [],
+            [],
+            current_user=user,
+            is_admin=False,
+            can_fetch_art=True,
+        )
+        self.assertIn("Fetch album art", html)
+        self.assertNotIn("Edit metadata", html)
+
+    def test_non_admin_hides_fetch_when_art_exists(self) -> None:
+        track = _sample_track(art_path="art/1/cover.jpg")
+        user = UserRow(id=2, username="regular")
+        html = render_track(
+            track,
+            [],
+            [],
+            current_user=user,
+            is_admin=False,
+            can_fetch_art=False,
+        )
         self.assertNotIn("Fetch album art", html)
         self.assertNotIn("Edit metadata", html)
 

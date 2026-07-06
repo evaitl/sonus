@@ -11,6 +11,7 @@ from sonus.cgi.common import (
     DEFAULT_SORT_DIR,
     PAGE_SIZE_OPTIONS,
     FilterOptions,
+    LibraryContext,
     PlaylistRow,
     TrackRow,
     UserRow,
@@ -23,10 +24,12 @@ from sonus.cgi.common import (
     format_duration,
     format_size,
     has_search_filters,
+    library_context_params,
     login_action,
     logout_action,
     normalize_page_size,
     normalize_sort_dir,
+    parse_library_context,
     playlist_edit_action,
     playlist_href,
     register_action,
@@ -243,25 +246,31 @@ def _filter_query(
     page_size: int,
     page: int | None = None,
 ) -> str:
-    params: dict[str, str] = {}
-    if title:
-        params["title"] = title
-    if artist:
-        params["artist"] = artist
-    if album:
-        params["album"] = album
-    if genre:
-        params["genre"] = genre
-    if sort and sort != "title":
-        params["sort"] = sort
-    if sort_dir != DEFAULT_SORT_DIR.get(sort, "asc"):
-        params["sort_dir"] = sort_dir
+    params = library_context_params(
+        parse_library_context(
+            title=title,
+            artist=artist,
+            album=album,
+            genre=genre,
+            sort=sort,
+            sort_dir=sort_dir,
+        )
+    )
     if page_size != DEFAULT_PAGE_SIZE:
         params["page_size"] = str(page_size)
     if page is not None and page > 1:
         params["page"] = str(page)
     query = urlencode(params)
     return f"?{query}" if query else ""
+
+
+def _library_context_hidden_inputs(library: LibraryContext | None) -> str:
+    if library is None:
+        return ""
+    return "\n".join(
+        f'          <input type="hidden" name="{esc(key)}" value="{esc(value)}">'
+        for key, value in library_context_params(library).items()
+    )
 
 
 def _play_button(track: TrackRow) -> str:
@@ -279,7 +288,7 @@ def _play_button(track: TrackRow) -> str:
     )
 
 
-def _track_row(track: TrackRow, *, show_album: bool = True) -> str:
+def _track_row(track: TrackRow, *, show_album: bool = True, library: LibraryContext | None = None) -> str:
     title = track.title or track.file_name
     artist = track.artist or track.album_artist or "—"
     album_cell = (
@@ -288,7 +297,7 @@ def _track_row(track: TrackRow, *, show_album: bool = True) -> str:
     return f"""        <tr>
           <td class="col-play">{_play_button(track)}</td>
           <td class="col-art">{_art_img(track, css_class="track-art track-art--sm")}</td>
-          <td class="col-title"><a href="{esc(track_href(track.id))}">{esc(title)}</a></td>
+          <td class="col-title"><a href="{esc(track_href(track.id, library=library))}">{esc(title)}</a></td>
           <td class="col-artist">{esc(artist)}</td>
           {album_cell}
           <td class="col-duration">{esc(format_duration(track.duration_seconds))}</td>
@@ -363,7 +372,20 @@ def render_library(
         else f"{library_total:,} tracks"
     )
 
-    rows = "\n".join(_track_row(track) for track in tracks) if tracks else (
+    rows = "\n".join(
+        _track_row(
+            track,
+            library=parse_library_context(
+                title=selected_title,
+                artist=selected_artist,
+                album=selected_album,
+                genre=selected_genre,
+                sort=sort,
+                sort_dir=sort_dir,
+            ),
+        )
+        for track in tracks
+    ) if tracks else (
         '        <tr><td colspan="7" class="empty-state">No tracks match your filters.</td></tr>'
     )
 
@@ -484,8 +506,12 @@ def render_track(
     *,
     current_user: UserRow | None = None,
     is_admin: bool = False,
+    can_fetch_art: bool = False,
     notice: str = "",
     error: str = "",
+    library: LibraryContext | None = None,
+    prev_url: str = "",
+    next_url: str = "",
 ) -> str:
     title = track.title or track.file_name
     artist = track.artist or track.album_artist or "—"
@@ -531,10 +557,13 @@ def render_track(
     if error:
         flash_html += f'<p class="flash-message flash-message--error">{esc(error)}</p>\n'
 
+    library_hidden = _library_context_hidden_inputs(library)
+
     fetch_art_form = ""
-    if is_admin:
+    if can_fetch_art:
         fetch_art_form = f"""            <form class="inline-form" method="post" action="{esc(fetch_art_action())}">
               <input type="hidden" name="id" value="{track.id}">
+{library_hidden}
               <button type="submit">Fetch album art</button>
             </form>
 """
@@ -545,6 +574,7 @@ def render_track(
         <h2>Edit metadata</h2>
         <form class="track-edit-form" method="post" action="{esc(track_edit_action())}">
           <input type="hidden" name="id" value="{track.id}">
+{library_hidden}
           <label>
             Title
             <input type="text" name="title" value="{esc(track.title or '')}" autocomplete="off">
@@ -594,11 +624,22 @@ def render_track(
       </section>
 """
     else:
-        login_href = f"{login_action()}?{urlencode({'next': f'track.py?id={track.id}'})}"
+        login_params: dict[str, str] = {"id": str(track.id)}
+        if library is not None:
+            login_params.update(library_context_params(library))
+        login_href = f"{login_action()}?{urlencode({'next': f'track.py?{urlencode(login_params)}'})}"
         playlist_section = f"""      <section class="track-detail__playlists">
         <h2>Playlists</h2>
         <p><a href="{esc(login_href)}">Log in</a> to add this track to a playlist.</p>
       </section>
+"""
+
+    track_nav = ""
+    if prev_url or next_url:
+        track_nav = f"""    <nav class="pagination track-pagination" data-page-nav data-prev-url="{esc(prev_url)}" data-next-url="{esc(next_url)}">
+      {"<a href='" + esc(prev_url) + "'>← Previous track</a>" if prev_url else "<span class='pagination__disabled'>← Previous track</span>"}
+      {"<a href='" + esc(next_url) + "'>Next track →</a>" if next_url else "<span class='pagination__disabled'>Next track →</span>"}
+    </nav>
 """
 
     body = f"""    <article class="track-detail">
@@ -627,6 +668,13 @@ def render_track(
         </table>
       </section>
     </article>
+{track_nav}    <dialog id="keyboard-help" class="help-dialog">
+      <h2>Keyboard shortcuts</h2>
+      <dl>
+        <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous / next track (swipe left / right on touch screens)</dd>
+      </dl>
+      <button type="button" data-keyboard-help-close>Close</button>
+    </dialog>
 """
     return page_shell(title, body, current_user=current_user)
 
