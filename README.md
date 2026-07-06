@@ -122,7 +122,7 @@ sonus fetch-album-art --all-missing
 sonus fetch-album-art --all-missing --force
 ```
 
-You can also use **Fetch album art** on a track detail page in the web UI.
+You can also use **Fetch album art** on a track detail page in the web UI (administrators only; see `admins.txt`). When the track has an album name, the same artwork is applied to every indexed track with that album.
 
 ### Fix missing artist tags
 
@@ -169,9 +169,24 @@ sonus user create yourname
 
 Or use **Create account** in the web UI header.
 
+### Administrators (`admins.txt`)
+
+The **Fetch album art** button and **Edit metadata** form on track pages are shown only to signed-in users listed in **`admins.txt`** (one username per line; `#` comments allowed). Matching is case-insensitive.
+
+Listed users must also enable **admin** in the header (checkbox next to Log out) during that browser session. The toggle is stored in a cookie and cleared on log out.
+
+Default location: `admins.txt` in the Sonus install directory. Override with `data/admins.txt` (takes precedence if present) or `SONUS_ADMINS_FILE`.
+
+```text
+# admins.txt
+evaitl
+```
+
+CLI `sonus fetch-album-art` is not restricted — only the web UI admin actions (`fetch_art.py`, `track_edit.py`).
+
 ### Web server write access (Apache)
 
-Registration, playlists, and **Fetch album art** update `data/library.db`. Apache runs CGI as **`www-data`**, which must be able to **write** the database file and the **`data/`** directory (SQLite also creates `library.db-wal` and `library.db-shm` there).
+Registration, playlists, **Fetch album art**, and **Edit metadata** update `data/library.db`. Apache runs CGI as **`www-data`**, which must be able to **write** the database file and the **`data/`** directory (SQLite also creates `library.db-wal` and `library.db-shm` there).
 
 If account creation fails with a read-only or permission error, run these from your Sonus install directory (replace `/path/to/sonus` if needed):
 
@@ -224,7 +239,8 @@ Sonus serves the library through a Python CGI frontend in `web/`.
 - **Sort** by title, artist, album, year, duration, size, last scanned, or random
 - **Play** tracks in the browser with a persistent bottom player bar
 - **Playlists** — per-user playlists (sign in to create, add tracks, play all)
-- **Fetch album art** — download missing cover art from online sources
+- **Administrators** — edit title/artist/album/genre and fetch album art (see `admins.txt`); enable **admin** in the header
+- **Fetch album art** — online cover art; same image applied to all tracks with matching album name
 - **Accounts** — optional sign-in for playlists; browsing and playback are open
 - **Keyboard shortcuts** — press <kbd>?</kbd> for help (`/` focus search, `Esc` clear, `←`/`→` change page)
 
@@ -237,6 +253,7 @@ Sonus serves the library through a Python CGI frontend in `web/`.
 | `SONUS_STATIC_URL` | URL to the CSS file (e.g. `/sonus/static/style.css`) |
 | `SONUS_SCAN_PATHS` | Colon-separated list of music directories |
 | `SONUS_SESSION_SECRET` | Session cookie signing secret (recommended in production) |
+| `SONUS_ADMINS_FILE` | Path to `admins.txt` (optional; default `data/admins.txt` or `admins.txt`) |
 
 Audio is streamed only from files under configured scan paths (default: `/media/music`).
 
@@ -296,8 +313,9 @@ Environment variables (prefix `SONUS_`) override config values, for example `SON
 
 1. **Scanner** (`sonus scan`) indexes audio files and writes metadata to SQLite. WMA is converted to MP3 for browser playback; only MP3 rows are stored. Rescans skip unchanged files by size/mtime; deleted files are marked missing.
 2. **Web UI** (`web/cgi-bin/`) reads the database, streams audio, and manages per-user playlists. Search uses FTS5 over title, artist, album, and related fields.
-3. **Album art** can be fetched online with `sonus fetch-album-art` or from the track detail page.
+3. **Album art** can be fetched online with `sonus fetch-album-art` or from the track detail page (admins). Matching album names receive the same artwork.
 4. **Artist backfill** with `sonus fix-artists` parses filenames when tags are empty.
+5. **Administrators** edit metadata in the web UI when listed in `admins.txt` and **admin** mode is enabled in the header.
 
 Scanning and serving are separate processes, so you can re-index on a schedule without restarting the web server.
 

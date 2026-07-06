@@ -31,6 +31,8 @@ class FetchArtError(Exception):
 class FetchArtResult:
     art_path: str
     source: str
+    updated_track_ids: list[int]
+    art_paths: dict[int, str]
 
 
 def _http_get(url: str, *, accept: str = "*/*") -> bytes:
@@ -266,6 +268,20 @@ def fetch_album_art_online(
     return None
 
 
+def apply_cover_bytes_to_tracks(
+    cover_bytes: bytes,
+    track_ids: list[int],
+    *,
+    art_dir: Path | None = None,
+) -> dict[int, str]:
+    """Write the same cover image for each track id. Returns id → art_path."""
+    paths: dict[int, str] = {}
+    for track_id in track_ids:
+        dest = _save_cover(cover_bytes, track_id=track_id, art_dir=art_dir)
+        paths[track_id] = str(dest.relative_to(PROJECT_ROOT))
+    return paths
+
+
 def enrich_track_art(
     *,
     track_id: int,
@@ -273,8 +289,13 @@ def enrich_track_art(
     album: str | None,
     title: str | None,
     art_dir: Path | None = None,
+    track_ids: list[int] | None = None,
 ) -> FetchArtResult:
-    """Fetch album art online and save it for a track."""
+    """Fetch album art online and save it for one or more tracks."""
+    targets = list(dict.fromkeys(track_ids if track_ids else [track_id]))
+    if track_id not in targets:
+        targets.insert(0, track_id)
+
     result = fetch_album_art_online(
         artist=artist,
         album=album,
@@ -285,8 +306,12 @@ def enrich_track_art(
             "No album art found online. Try adding artist and album metadata."
         )
     cover_bytes, source = result
-    dest = _save_cover(cover_bytes, track_id=track_id, art_dir=art_dir)
+    paths = apply_cover_bytes_to_tracks(
+        cover_bytes, targets, art_dir=art_dir
+    )
     return FetchArtResult(
-        art_path=str(dest.relative_to(PROJECT_ROOT)),
+        art_path=paths[track_id],
         source=source,
+        updated_track_ids=targets,
+        art_paths=paths,
     )

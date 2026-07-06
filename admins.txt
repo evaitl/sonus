@@ -1,0 +1,6 @@
+# Sonus administrators — one username per line.
+# Users listed here see "Fetch album art" on track pages (must be signed in).
+# Lines starting with # are ignored. Matching is case-insensitive.
+#
+# Example:
+#   evaitl

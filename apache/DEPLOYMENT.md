@@ -201,7 +201,8 @@ You should see `Content-Type: text/html` and HTML output.
 2. Confirm **search and pagination** work.
 3. **Play a track** — if streaming fails, check `SONUS_SCAN_PATHS` and that `www-data` can read the audio file.
 4. **Log in** and create a test playlist.
-5. Run **`sonus scan`** again and confirm new files appear without restarting Apache.
+5. Add your username to **`admins.txt`**, sign in, check **admin** in the header, and test fetch album art / metadata edit on a track page.
+6. Run **`sonus scan`** again and confirm new files appear without restarting Apache.
 
 ---
 

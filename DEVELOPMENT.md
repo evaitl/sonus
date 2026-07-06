@@ -40,11 +40,12 @@ sonus/
   fetch_art.py      ← online album art (MusicBrainz + iTunes fallback)
   file_hash.py      ← SHA-1 for duplicate detection
   scanner.py        ← directory walk, fast rescan, per-track commit, dedup by hash
-  auth.py           ← scrypt passwords, signed session cookies
-  users.py          ← account registration
+  auth.py           ← scrypt passwords, signed session cookies, admin-mode cookie
+  admins.py         ← admins.txt lookup, admin mode gate
   cgi/
     common.py       ← DB queries, FTS search, playlists, auth helpers
     form.py         ← CGI request parsing (stdlib only; no deprecated cgi module)
+    track_page.py   ← shared track detail rendering for CGI scripts
     render.py       ← server-side HTML
 tests/              ← unittest suite (CGI form parser, etc.)
 apache/
@@ -54,7 +55,7 @@ scripts/
   setup-data-dir.sh ← create data/, chmod CGI scripts
   scan-library.sh   ← cron-friendly scan wrapper
 web/
-  cgi-bin/          ← index, track, stream, art, playlists, auth, fetch_art
+  cgi-bin/          ← index, track, stream, art, playlists, auth, fetch_art, track_edit, admin_mode
   static/
     style.css
     library.js      ← debounced search, keyboard shortcuts
@@ -67,8 +68,9 @@ web/
 2. **Browse:** CGI scripts read the database and render HTML with server-side pagination and filters. Text search uses **FTS5** (`tracks_fts`), not `LIKE`.
 3. **Play:** `stream.py` serves audio with HTTP Range support. Browsers play MP3/FLAC/OGG/etc.; WMA is not played in-browser (hence transcoding).
 4. **Playlists:** signed-in users create per-user playlists; tracks are shared library-wide.
-5. **Fetch album art:** MusicBrainz + Cover Art Archive, iTunes fallback; updates `art_path` only.
+5. **Fetch album art:** MusicBrainz + Cover Art Archive, iTunes fallback; updates `art_path` for all tracks with the same album name (web UI: admins only).
 6. **Auth:** optional accounts for playlists; browsing and playback are open.
+7. **Admin tools:** `admins.txt` + header **admin** checkbox gate fetch-art and metadata edit on track pages.
 
 ---
 
@@ -182,6 +184,33 @@ Apache CGI deployment is unchanged; only request parsing moved off the removed s
 
 ---
 
+## Session 6 — Administrators, metadata edit, album art (July 2026)
+
+### `admins.txt`
+
+- **`admins.txt`** at install root (or `data/admins.txt`, or `SONUS_ADMINS_FILE`) lists usernames allowed to use admin web features
+- **`sonus/admins.py`** — `user_is_admin_listed()`, `user_is_admin()` (also requires admin-mode cookie)
+
+### Admin mode checkbox
+
+- Listed users see an **admin** checkbox next to **Log out** in the site header
+- Checking it sets `sonus_admin_mode` cookie via **`admin_mode.py`**; cleared on log out
+- Admin features are off until the box is checked (even for listed users)
+
+### Track metadata editing
+
+- Admins can edit **title**, **artist**, **album**, **genre** on the track detail page
+- **`track_edit.py`** POST handler; updates SQLite (FTS triggers keep search in sync)
+- Manual edits can be overwritten on rescan if the file’s size/mtime changes and tags are re-read
+
+### Album-wide album art
+
+- **Fetch album art** (web or CLI) downloads once, then applies the same image to every track with a matching **album** name (case-insensitive)
+- **`track_ids_with_album()`**, **`apply_cover_bytes_to_tracks()`** in `sonus/fetch_art.py` / `sonus/cgi/common.py`
+- CLI `--all-missing` skips albums already processed in the same run
+
+---
+
 ## Supported audio formats
 
 | Extension | Indexed as | Notes |
@@ -204,6 +233,7 @@ sonus scan [--path PATH]...       # index audio files
 sonus fetch-album-art --track-id 1
 sonus fetch-album-art --all-missing
 sonus fetch-album-art --all-missing --force
+# When a track has an album name, art is applied to all tracks with that album
 sonus fix-artists                 # backfill artist from filenames
 sonus fix-artists --force         # overwrite existing artist tags
 sonus user create USERNAME        # create web login
@@ -219,7 +249,8 @@ sonus user create USERNAME        # create web login
 - Pagination (25 / 50 / 100 / 200 per page)
 - Play in browser with persistent bottom player
 - Per-user playlists (requires account)
-- Fetch album art online from track detail page
+- **Administrators** — `admins.txt` + header **admin** checkbox; fetch album art and edit track metadata
+- Fetch album art applies to all tracks sharing the same album name
 - Keyboard shortcuts: `/` search, `Esc` clear, `←`/`→` pages, `?` help
 
 ---

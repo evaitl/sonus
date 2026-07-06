@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CGI entry point: fetch online album art for a track."""
+"""CGI entry point: update track metadata (administrators only)."""
 
 from __future__ import annotations
 
@@ -15,17 +15,15 @@ if str(ROOT) not in sys.path:
 
 from sonus.admins import user_is_admin
 from sonus.cgi.common import (
-    art_dir,
     connect,
     connect_rw,
     get_current_user,
-    track_ids_with_album,
-    update_tracks_art_paths,
+    parse_track_metadata_form,
+    update_track_metadata,
 )
 from sonus.cgi.form import read_cgi_form
 from sonus.cgi.render import render_error
 from sonus.cgi.track_page import load_track_context, render_track_page
-from sonus.fetch_art import FetchArtError, enrich_track_art
 
 
 def _html(body: str) -> None:
@@ -66,29 +64,15 @@ def main() -> None:
                     current_user,
                     playlists,
                     track_playlists,
-                    error="Only administrators can fetch album art.",
+                    error="Only administrators can edit track metadata.",
                 )
             )
             return
 
-        with connect() as read_conn:
-            album_track_ids = track_ids_with_album(read_conn, track.album)
-        if not album_track_ids:
-            album_track_ids = [track_id]
-
+        metadata = parse_track_metadata_form(form)
         conn = connect_rw()
         try:
-            result = enrich_track_art(
-                track_id=track_id,
-                artist=track.artist,
-                album=track.album,
-                title=track.title,
-                art_dir=art_dir(),
-                track_ids=album_track_ids,
-            )
-            update_tracks_art_paths(conn, result.art_paths)
-            source = result.source
-            updated_count = len(result.updated_track_ids)
+            update_track_metadata(conn, track_id, metadata)
         finally:
             conn.close()
 
@@ -102,17 +86,13 @@ def main() -> None:
             _html(render_error("Track not found after update.", status_hint="Not found"))
             return
 
-        notice = f"Album art updated from {source}"
-        if updated_count > 1:
-            notice += f" for {updated_count} tracks with the same album"
-
         _html(
             render_track_page(
                 track,
                 current_user,
                 playlists,
                 track_playlists,
-                notice=notice,
+                notice="Metadata saved.",
             )
         )
     except FileNotFoundError as exc:
@@ -159,24 +139,6 @@ def main() -> None:
                 error=message,
             )
         )
-    except FetchArtError as exc:
-        with connect() as conn:
-            current_user = get_current_user(conn)
-            track, playlists, track_playlists = load_track_context(
-                conn, track_id, current_user
-            )
-        if track is None:
-            _html(render_error(str(exc)))
-            return
-        _html(
-            render_track_page(
-                track,
-                current_user,
-                playlists,
-                track_playlists,
-                error=str(exc),
-            )
-        )
     except Exception:
         traceback.print_exc(file=sys.stderr)
         with connect() as conn:
@@ -185,7 +147,7 @@ def main() -> None:
                 conn, track_id, current_user
             )
         if track is None:
-            _html(render_error("Unexpected error while fetching album art."))
+            _html(render_error("Unexpected error while saving metadata."))
             return
         _html(
             render_track_page(
@@ -193,7 +155,7 @@ def main() -> None:
                 current_user,
                 playlists,
                 track_playlists,
-                error="Unexpected error while fetching album art.",
+                error="Unexpected error while saving metadata.",
             )
         )
 

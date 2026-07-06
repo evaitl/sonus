@@ -10,15 +10,10 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from sonus.cgi.common import connect, get_current_user
 from sonus.cgi.form import read_cgi_form
-from sonus.cgi.common import (
-    connect,
-    get_current_user,
-    get_track,
-    list_playlists,
-    playlists_for_track,
-)
-from sonus.cgi.render import render_error, render_track
+from sonus.cgi.render import render_error
+from sonus.cgi.track_page import load_track_context, render_track_page
 
 
 def main() -> None:
@@ -36,29 +31,21 @@ def main() -> None:
 
     try:
         with connect() as conn:
-            track = get_track(conn, track_id)
-            if track is None or track.is_missing:
-                print("Content-Type: text/html; charset=utf-8")
-                print("Status: 404 Not Found")
-                print()
-                print(render_error("Track not found", status_hint="Not found"))
-                return
             current_user = get_current_user(conn)
-            playlists = (
-                list_playlists(conn, user_id=current_user.id)
-                if current_user is not None
-                else []
+            track, playlists, track_playlists = load_track_context(
+                conn, track_id, current_user
             )
-            track_playlists = (
-                playlists_for_track(conn, track_id, user_id=current_user.id)
-                if current_user is not None
-                else []
-            )
-        html = render_track(
+        if track is None or track.is_missing:
+            print("Content-Type: text/html; charset=utf-8")
+            print("Status: 404 Not Found")
+            print()
+            print(render_error("Track not found", status_hint="Not found"))
+            return
+        html = render_track_page(
             track,
+            current_user,
             playlists,
             track_playlists,
-            current_user=current_user,
         )
         print("Content-Type: text/html; charset=utf-8")
         print()

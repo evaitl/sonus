@@ -123,6 +123,25 @@ body.has-player .main-content {
   margin: 0;
 }
 
+.auth-nav__admin {
+  margin: 0;
+}
+
+.auth-nav__admin-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.auth-nav__admin-label input {
+  margin: 0;
+  cursor: pointer;
+}
+
 .auth-nav__logout button {
   font: inherit;
   color: var(--text);
@@ -426,10 +445,37 @@ h1 {
 }
 
 .track-detail__playlists,
+.track-detail__edit,
 .track-detail__meta,
 .playlists-page,
 .playlist-detail {
   margin-bottom: 2rem;
+}
+
+.track-edit-form {
+  display: grid;
+  gap: 0.75rem 1rem;
+  max-width: 32rem;
+}
+
+.track-edit-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.track-edit-form input[type="text"] {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.track-edit-form button {
+  justify-self: start;
 }
 
 .inline-form {

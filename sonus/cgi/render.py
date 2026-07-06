@@ -5,6 +5,7 @@ import json
 
 from urllib.parse import urlencode
 
+from sonus.admins import admin_mode_enabled, user_is_admin_listed
 from sonus.cgi.common import (
     DEFAULT_PAGE_SIZE,
     DEFAULT_SORT_DIR,
@@ -13,6 +14,7 @@ from sonus.cgi.common import (
     PlaylistRow,
     TrackRow,
     UserRow,
+    admin_mode_action,
     art_cache_version,
     art_href,
     cgi_script,
@@ -31,6 +33,7 @@ from sonus.cgi.common import (
     static_asset,
     static_href,
     stream_href,
+    track_edit_action,
     track_href,
 )
 
@@ -41,9 +44,19 @@ def _header_auth(current_user: UserRow | None) -> str:
         <a href="{esc(login_action())}">Log in</a>
         <a href="{esc(register_action())}">Create account</a>
       </nav>"""
+    admin_toggle = ""
+    if user_is_admin_listed(current_user):
+        checked = " checked" if admin_mode_enabled() else ""
+        admin_toggle = f"""        <form class="auth-nav__admin" method="post" action="{esc(admin_mode_action())}">
+          <label class="auth-nav__admin-label">
+            <input type="checkbox" name="enable" value="1"{checked} onchange="this.form.submit()">
+            admin
+          </label>
+        </form>
+"""
     return f"""      <nav class="auth-nav">
         <span class="auth-nav__user">Signed in as {esc(current_user.username)}</span>
-        <form class="auth-nav__logout" method="post" action="{esc(logout_action())}">
+{admin_toggle}        <form class="auth-nav__logout" method="post" action="{esc(logout_action())}">
           <button type="submit">Log out</button>
         </form>
       </nav>"""
@@ -470,6 +483,7 @@ def render_track(
     track_playlists: list[PlaylistRow],
     *,
     current_user: UserRow | None = None,
+    is_admin: bool = False,
     notice: str = "",
     error: str = "",
 ) -> str:
@@ -517,6 +531,41 @@ def render_track(
     if error:
         flash_html += f'<p class="flash-message flash-message--error">{esc(error)}</p>\n'
 
+    fetch_art_form = ""
+    if is_admin:
+        fetch_art_form = f"""            <form class="inline-form" method="post" action="{esc(fetch_art_action())}">
+              <input type="hidden" name="id" value="{track.id}">
+              <button type="submit">Fetch album art</button>
+            </form>
+"""
+
+    metadata_edit_section = ""
+    if is_admin:
+        metadata_edit_section = f"""      <section class="track-detail__edit">
+        <h2>Edit metadata</h2>
+        <form class="track-edit-form" method="post" action="{esc(track_edit_action())}">
+          <input type="hidden" name="id" value="{track.id}">
+          <label>
+            Title
+            <input type="text" name="title" value="{esc(track.title or '')}" autocomplete="off">
+          </label>
+          <label>
+            Artist
+            <input type="text" name="artist" value="{esc(track.artist or '')}" autocomplete="off">
+          </label>
+          <label>
+            Album
+            <input type="text" name="album" value="{esc(track.album or '')}" autocomplete="off">
+          </label>
+          <label>
+            Genre
+            <input type="text" name="genre" value="{esc(track.genre or '')}" autocomplete="off">
+          </label>
+          <button type="submit">Save metadata</button>
+        </form>
+      </section>
+"""
+
     if current_user is not None:
         playlist_section = f"""      <section class="track-detail__playlists">
         <h2>Playlists</h2>
@@ -562,18 +611,14 @@ def render_track(
           <div class="track-detail__actions">
             {_play_button(track)}
             <a class="btn-secondary" href="{esc(stream_href(track.id))}" download>Download</a>
-            <form class="inline-form" method="post" action="{esc(fetch_art_action())}">
-              <input type="hidden" name="id" value="{track.id}">
-              <button type="submit">Fetch album art</button>
-            </form>
-          </div>
+{fetch_art_form}          </div>
           <audio class="track-player" controls preload="metadata" src="{esc(stream_href(track.id))}"></audio>
         </div>
       </div>
 
 {playlist_section}
 
-      <section class="track-detail__meta">
+{metadata_edit_section}      <section class="track-detail__meta">
         <h2>Details</h2>
         <table class="meta-table">
           <tbody>

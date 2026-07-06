@@ -169,6 +169,17 @@ def fetch_art_action() -> str:
     return cgi_script("fetch_art.py")
 
 
+def track_edit_action() -> str:
+    return cgi_script("track_edit.py")
+
+
+def admin_mode_action() -> str:
+    return cgi_script("admin_mode.py")
+
+
+TRACK_METADATA_FIELDS = frozenset({"title", "artist", "album", "genre"})
+
+
 def track_href(track_id: int) -> str:
     return f"{cgi_script('track.py')}?id={track_id}"
 
@@ -575,12 +586,79 @@ def create_session_for_user(user: UserRow) -> str:
     return create_session_token(user_id=user.id, username=user.username, secret=secret)
 
 
+def safe_referer_location() -> str:
+    """Return a same-app redirect target from Referer, or the library index."""
+    from urllib.parse import urlparse
+
+    referer = os.environ.get("HTTP_REFERER", "")
+    if not referer:
+        return cgi_script("index.py")
+    parsed = urlparse(referer)
+    allowed = ("index.py", "track.py", "playlists.py")
+    if not any(parsed.path.rstrip("/").endswith(name) for name in allowed):
+        return cgi_script("index.py")
+    location = parsed.path
+    if parsed.query:
+        location += f"?{parsed.query}"
+    return location
+
+
 def update_track_fields(conn: sqlite3.Connection, track_id: int, fields: dict[str, object]) -> None:
     if not fields:
         return
     columns = ", ".join(f"{key} = ?" for key in fields)
     values = list(fields.values()) + [track_id]
     conn.execute(f"UPDATE tracks SET {columns} WHERE id = ?", values)
+    conn.commit()
+
+
+def parse_track_metadata_form(form) -> dict[str, str | None]:
+    result: dict[str, str | None] = {}
+    for field in TRACK_METADATA_FIELDS:
+        raw = form.getfirst(field, "")
+        cleaned = str(raw or "").strip()
+        result[field] = cleaned or None
+    return result
+
+
+def update_track_metadata(
+    conn: sqlite3.Connection, track_id: int, fields: dict[str, str | None]
+) -> None:
+    unknown = set(fields) - TRACK_METADATA_FIELDS
+    if unknown:
+        raise ValueError(f"invalid metadata fields: {sorted(unknown)}")
+    update_track_fields(conn, track_id, fields)
+
+
+def track_ids_with_album(conn: sqlite3.Connection, album: str | None) -> list[int]:
+    """Return track ids sharing the same album name (case-insensitive)."""
+    cleaned = (album or "").strip()
+    if not cleaned:
+        return []
+    rows = conn.execute(
+        """
+        SELECT id FROM tracks
+        WHERE is_missing = 0
+          AND album IS NOT NULL
+          AND TRIM(album) != ''
+          AND LOWER(TRIM(album)) = LOWER(?)
+        ORDER BY id
+        """,
+        (cleaned,),
+    ).fetchall()
+    return [int(row[0]) for row in rows]
+
+
+def update_tracks_art_paths(
+    conn: sqlite3.Connection, paths: dict[int, str]
+) -> None:
+    if not paths:
+        return
+    for track_id, art_path in paths.items():
+        conn.execute(
+            "UPDATE tracks SET art_path = ? WHERE id = ?",
+            (art_path, track_id),
+        )
     conn.commit()
 
 

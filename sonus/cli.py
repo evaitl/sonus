@@ -106,6 +106,8 @@ def fetch_album_art(
 
     import sqlite3
 
+    from sonus.cgi.common import track_ids_with_album, update_tracks_art_paths
+
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
@@ -136,26 +138,40 @@ def fetch_album_art(
         updated = 0
         errors: list[str] = []
         art_dir = resolve_art_dir(settings.art_dir)
+        completed_albums: set[str] = set()
 
         for row in rows:
             if row["art_path"] and not force:
                 continue
+            album_key = (row["album"] or "").strip().casefold()
+            if album_key and album_key in completed_albums:
+                continue
             try:
+                track_id = int(row["id"])
+                album_track_ids = track_ids_with_album(conn, row["album"])
+                if not album_track_ids:
+                    album_track_ids = [track_id]
+
                 result = enrich_track_art(
-                    track_id=int(row["id"]),
+                    track_id=track_id,
                     artist=row["artist"],
                     album=row["album"],
                     title=row["title"],
                     art_dir=art_dir,
+                    track_ids=album_track_ids,
                 )
-                conn.execute(
-                    "UPDATE tracks SET art_path = ? WHERE id = ?",
-                    (result.art_path, row["id"]),
-                )
-                conn.commit()
-                updated += 1
+                update_tracks_art_paths(conn, result.art_paths)
+                updated += len(result.updated_track_ids)
+                if album_key:
+                    completed_albums.add(album_key)
                 label = row["title"] or row["id"]
-                typer.echo(f"updated: {label} ({result.source})")
+                if len(result.updated_track_ids) > 1:
+                    typer.echo(
+                        f"updated: {label} ({result.source}, "
+                        f"{len(result.updated_track_ids)} tracks)"
+                    )
+                else:
+                    typer.echo(f"updated: {label} ({result.source})")
             except FetchArtError as exc:
                 errors.append(f"{row['id']}: {exc}")
 
