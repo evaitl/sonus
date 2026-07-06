@@ -603,6 +603,49 @@ def list_tracks(
     return [row_to_track(row) for row in rows], filtered_count, library_total, page, options
 
 
+def _track_matches_library_filter(
+    conn: sqlite3.Connection, track_id: int, library: LibraryContext
+) -> bool:
+    sort_dir = normalize_sort_dir(library.sort, library.sort_dir)
+    query = _track_filter(
+        title=library.title,
+        artist=library.artist,
+        album=library.album,
+        genre=library.genre,
+        sort=library.sort,
+        sort_dir=sort_dir,
+    )
+    row = conn.execute(
+        f"""
+        SELECT 1
+        {query.from_sql}
+        WHERE {query.where_sql} AND tracks.id = ?
+        """,
+        [*query.params, track_id],
+    ).fetchone()
+    return row is not None
+
+
+def effective_library_for_track_nav(
+    conn: sqlite3.Connection,
+    track_id: int,
+    library: LibraryContext,
+) -> LibraryContext:
+    """Keep sort order but drop filters that no longer include this track."""
+    if library.sort == "random":
+        return library
+    if not has_search_filters(
+        title=library.title,
+        artist=library.artist,
+        album=library.album,
+        genre=library.genre,
+    ):
+        return library
+    if _track_matches_library_filter(conn, track_id, library):
+        return library
+    return parse_library_context(sort=library.sort, sort_dir=library.sort_dir)
+
+
 def adjacent_library_tracks(
     conn: sqlite3.Connection,
     track_id: int,
@@ -611,6 +654,7 @@ def adjacent_library_tracks(
     """Return previous/next track ids in the filtered library sort order."""
     if library.sort == "random":
         return None, None
+    library = effective_library_for_track_nav(conn, track_id, library)
     sort_dir = normalize_sort_dir(library.sort, library.sort_dir)
     query = _track_filter(
         title=library.title,
@@ -645,9 +689,10 @@ def track_library_nav_urls(
     track_id: int,
     library: LibraryContext,
 ) -> tuple[str, str]:
-    prev_id, next_id = adjacent_library_tracks(conn, track_id, library)
-    prev_url = track_href(prev_id, library=library) if prev_id else ""
-    next_url = track_href(next_id, library=library) if next_id else ""
+    effective = effective_library_for_track_nav(conn, track_id, library)
+    prev_id, next_id = adjacent_library_tracks(conn, track_id, effective)
+    prev_url = track_href(prev_id, library=effective) if prev_id else ""
+    next_url = track_href(next_id, library=effective) if next_id else ""
     return prev_url, next_url
 
 
@@ -737,7 +782,10 @@ def update_track_metadata(
     unknown = set(fields) - TRACK_METADATA_FIELDS
     if unknown:
         raise ValueError(f"invalid metadata fields: {sorted(unknown)}")
-    update_track_fields(conn, track_id, fields)
+    updates = dict(fields)
+    if "title" in updates:
+        updates["sort_title"] = updates["title"]
+    update_track_fields(conn, track_id, updates)
 
 
 def track_has_placeholder_art(track: TrackRow) -> bool:

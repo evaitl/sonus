@@ -8,6 +8,7 @@ from pathlib import Path
 from sonus.cgi.common import (
     LibraryContext,
     adjacent_library_tracks,
+    effective_library_for_track_nav,
     parse_library_context,
     track_href,
     track_library_nav_urls,
@@ -116,6 +117,18 @@ class AdjacentLibraryTracksTests(unittest.TestCase):
         prev_url, next_url = track_library_nav_urls(self.conn, 2, library)
         self.assertIn("id=1", prev_url)
         self.assertIn("id=3", next_url)
+
+    def test_nav_falls_back_when_track_not_in_filter(self) -> None:
+        self.conn.execute("UPDATE tracks SET genre = 'Jazz' WHERE id = 2")
+        self.conn.commit()
+        filtered = parse_library_context(genre="Rock")
+        self.assertEqual(adjacent_library_tracks(self.conn, 2, filtered), (1, 3))
+        effective = effective_library_for_track_nav(self.conn, 2, filtered)
+        self.assertEqual(effective.genre, "")
+        prev_url, next_url = track_library_nav_urls(self.conn, 2, filtered)
+        self.assertIn("id=1", prev_url)
+        self.assertIn("id=3", next_url)
+        self.assertNotIn("genre=", prev_url)
 
 
 class RenderTrackNavTests(unittest.TestCase):
