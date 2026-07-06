@@ -8,12 +8,23 @@ from sonus.fetch_art import FetchArtError, enrich_track_art
 from sonus.scanner import print_scan_progress, print_skipped_entries, scan_paths
 from sonus.users import UserError, register_user
 
+_PLAIN_CLI = {
+    "pretty_exceptions_enable": False,
+    "rich_markup_mode": None,
+    "context_settings": {"color": False},
+}
+
 app = typer.Typer(
     no_args_is_help=True,
     help="Sonus — scan music directories and browse your library.",
+    **_PLAIN_CLI,
 )
 
-user_app = typer.Typer(no_args_is_help=True, help="Manage library user accounts.")
+user_app = typer.Typer(
+    no_args_is_help=True,
+    help="Manage library user accounts.",
+    **_PLAIN_CLI,
+)
 app.add_typer(user_app, name="user")
 
 

@@ -26,7 +26,16 @@ import typer
 
 from sonus.cli import app
 
+_COMMANDS = frozenset({"scan", "fetch-album-art", "fix-artists", "user"})
+
+
+def _ensure_scan_command(argv: list[str] | None = None) -> None:
+    argv = sys.argv if argv is None else argv
+    if len(argv) > 1 and argv[1] in _COMMANDS:
+        return
+    argv.insert(1, "scan")
+
+
 if __name__ == "__main__":
-    if len(sys.argv) == 1:
-        sys.argv.append("scan")
+    _ensure_scan_command()
     app()
